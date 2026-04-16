@@ -1,0 +1,1 @@
+Split the source document into semantically coherent chunks with clear headings.

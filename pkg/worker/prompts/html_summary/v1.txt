@@ -1,0 +1,1 @@
+Generate concise HTML summaries using only allowed tags and data-paper-id links for related nodes.

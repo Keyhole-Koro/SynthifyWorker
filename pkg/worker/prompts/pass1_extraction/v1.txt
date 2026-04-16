@@ -1,0 +1,1 @@
+Extract grounded nodes from the provided chunk. Prefer concepts, claims, evidence, counters, and entities that appear explicitly in the text.

@@ -1,0 +1,85 @@
+package stages
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+)
+
+type GraphRepository interface {
+	SaveDocumentChunks(documentID string, chunks []*domain.DocumentChunk) error
+	CreateStructuredNode(graphID, label, category string, level int, entityType, description, summaryHTML, createdBy string) *domain.Node
+	CreateEdge(graphID, sourceNodeID, targetNodeID, edgeType, description string) *domain.Edge
+	UpsertNodeSource(nodeID, documentID, chunkID, sourceText string, confidence float64) error
+	UpsertEdgeSource(edgeID, documentID, chunkID, sourceText string, confidence float64) error
+}
+
+type PersistenceStage struct {
+	repo GraphRepository
+}
+
+func NewPersistenceStage(repo GraphRepository) *PersistenceStage {
+	return &PersistenceStage{repo: repo}
+}
+
+func (s *PersistenceStage) Name() pipeline.StageName { return pipeline.StagePersistence }
+
+func (s *PersistenceStage) Run(ctx context.Context, pctx *pipeline.PipelineContext) error {
+	pctx.NodeIDMap = make(map[string]string, len(pctx.SynthesizedNodes))
+	chunks := make([]*domain.DocumentChunk, 0, len(pctx.Chunks))
+	chunkTextByID := map[string]string{}
+	for _, chunk := range pctx.Chunks {
+		chunkID := fmt.Sprintf("chk_%s_%03d", pctx.DocumentID, chunk.ChunkIndex)
+		chunks = append(chunks, &domain.DocumentChunk{
+			ChunkID:    chunkID,
+			DocumentID: pctx.DocumentID,
+			Heading:    chunk.Heading,
+			Text:       chunk.Text,
+		})
+		chunkTextByID[fmt.Sprintf("c_%03d", chunk.ChunkIndex)] = chunk.Text
+	}
+	if err := s.repo.SaveDocumentChunks(pctx.DocumentID, chunks); err != nil {
+		return err
+	}
+	for _, node := range pctx.SynthesizedNodes {
+		created := s.repo.CreateStructuredNode(
+			pctx.GraphID,
+			node.Label,
+			node.Category,
+			node.Level,
+			node.EntityType,
+			node.Description,
+			node.SummaryHTML,
+			"worker",
+		)
+		if created == nil {
+			return fmt.Errorf("failed to persist node %s", node.LocalID)
+		}
+		pctx.NodeIDMap[node.LocalID] = created.NodeID
+		if chunkText := strings.TrimSpace(chunkTextByID[node.SourceChunkID]); chunkText != "" {
+			if err := s.repo.UpsertNodeSource(created.NodeID, pctx.DocumentID, node.SourceChunkID, chunkText, 1); err != nil {
+				return err
+			}
+		}
+	}
+	for _, edge := range pctx.SynthesizedEdges {
+		sourceID := pctx.NodeIDMap[edge.SourceLocalID]
+		targetID := pctx.NodeIDMap[edge.TargetLocalID]
+		if sourceID == "" || targetID == "" {
+			continue
+		}
+		created := s.repo.CreateEdge(pctx.GraphID, sourceID, targetID, edge.EdgeType, edge.Description)
+		if created == nil {
+			return fmt.Errorf("failed to persist edge %s->%s", edge.SourceLocalID, edge.TargetLocalID)
+		}
+		if chunkText := strings.TrimSpace(chunkTextByID[edge.SourceChunkID]); chunkText != "" {
+			if err := s.repo.UpsertEdgeSource(created.EdgeID, pctx.DocumentID, edge.SourceChunkID, chunkText, 1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

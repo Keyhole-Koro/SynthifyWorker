@@ -1,0 +1,1 @@
+Synthesize the chunk-level extraction results into a coherent document graph with stable hierarchy.
