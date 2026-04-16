@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	"github.com/synthify/backend/internal/jobstatus"
+	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	workercontext "github.com/synthify/backend/worker/pkg/worker/context"
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 	"github.com/synthify/backend/worker/pkg/worker/stages"

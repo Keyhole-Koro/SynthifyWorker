@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/synthify/backend/internal/app"
-	"github.com/synthify/backend/internal/jobstatus"
-	"github.com/synthify/backend/internal/middleware"
-	"github.com/synthify/backend/internal/worker"
+	"github.com/Keyhole-Koro/SynthifyShared/app"
+	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
+	"github.com/Keyhole-Koro/SynthifyShared/middleware"
+	"github.com/synthify/backend/worker/pkg/worker"
 )
 
 func main() {

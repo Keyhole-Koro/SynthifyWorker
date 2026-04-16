@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/synthify/backend/internal/jobstatus"
+	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 )
 
 type JobRepository interface {
