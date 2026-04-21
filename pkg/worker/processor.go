@@ -22,6 +22,7 @@ type documentRepo interface {
 }
 
 type graphRepo interface {
+	GetWorkspaceRootNodeID(graphID string) (string, bool)
 	CreateStructuredNode(graphID, label, category string, level int, entityType, description, summaryHTML, createdBy string) *domain.Node
 	CreateEdge(graphID, sourceNodeID, targetNodeID, edgeType, description string) *domain.Edge
 	UpsertNodeSource(nodeID, documentID, chunkID, sourceText string, confidence float64) error
@@ -59,7 +60,7 @@ func NewProcessorWithNotifier(jobRepo documentRepo, graphRepo graphRepo, notifie
 		stages.NewSemanticChunkingStage(assembler, llmClient),
 		stages.NewBriefGenerationStage(assembler, llmClient),
 		stages.NewPass1ExtractionStage(assembler, llmClient, 5),
-		stages.NewPass2SynthesisStage(assembler),
+		stages.NewPass2SynthesisStage(assembler, llmClient),
 		stages.NewPersistenceStage(combinedRepo{documentRepo: jobRepo, graphRepo: graphRepo}),
 		stages.NewHTMLSummaryGenerationStage(graphRepo, assembler, llmClient, 10),
 	)

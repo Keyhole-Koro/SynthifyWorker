@@ -10,6 +10,7 @@ import (
 )
 
 type GraphRepository interface {
+	GetWorkspaceRootNodeID(graphID string) (string, bool)
 	SaveDocumentChunks(documentID string, chunks []*domain.DocumentChunk) error
 	CreateStructuredNode(graphID, label, category string, level int, entityType, description, summaryHTML, createdBy string) *domain.Node
 	CreateEdge(graphID, sourceNodeID, targetNodeID, edgeType, description string) *domain.Edge
@@ -29,6 +30,7 @@ func (s *PersistenceStage) Name() pipeline.StageName { return pipeline.StagePers
 
 func (s *PersistenceStage) Run(ctx context.Context, pctx *pipeline.PipelineContext) error {
 	pctx.NodeIDMap = make(map[string]string, len(pctx.SynthesizedNodes))
+	workspaceRootID, _ := s.repo.GetWorkspaceRootNodeID(pctx.GraphID)
 	chunks := make([]*domain.DocumentChunk, 0, len(pctx.Chunks))
 	chunkTextByID := map[string]string{}
 	for _, chunk := range pctx.Chunks {
@@ -78,6 +80,13 @@ func (s *PersistenceStage) Run(ctx context.Context, pctx *pipeline.PipelineConte
 		if chunkText := strings.TrimSpace(chunkTextByID[edge.SourceChunkID]); chunkText != "" {
 			if err := s.repo.UpsertEdgeSource(created.EdgeID, pctx.DocumentID, edge.SourceChunkID, chunkText, 1); err != nil {
 				return err
+			}
+		}
+	}
+	if workspaceRootID != "" {
+		if docRootID := pctx.NodeIDMap["doc_root"]; docRootID != "" && docRootID != workspaceRootID {
+			if s.repo.CreateEdge(pctx.GraphID, workspaceRootID, docRootID, "hierarchical", "") == nil {
+				return fmt.Errorf("failed to attach document root %s to workspace root", docRootID)
 			}
 		}
 	}

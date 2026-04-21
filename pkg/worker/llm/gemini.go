@@ -21,7 +21,7 @@ func NewGeminiClient(cfg config.LLM) *GeminiClient {
 		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {
-		// NewClient during construction might be risky if API key is missing, 
+		// NewClient during construction might be risky if API key is missing,
 		// but let's follow the pattern.
 		return &GeminiClient{model: cfg.GeminiModel}
 	}
@@ -41,8 +41,8 @@ func (c *GeminiClient) GenerateStructured(ctx context.Context, req StructuredReq
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: req.SystemPrompt}},
 		},
-		Temperature:      ptr(float64(0.2)),
-		ResponseMimeType: "application/json",
+		Temperature:      ptr(float32(0.2)),
+		ResponseMIMEType: "application/json",
 	}
 
 	res, err := c.client.Models.GenerateContent(ctx, c.model, genai.Text(req.UserPrompt), config)
@@ -67,7 +67,7 @@ func (c *GeminiClient) GenerateText(ctx context.Context, req TextRequest) (strin
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: req.SystemPrompt}},
 		},
-		Temperature: ptr(float64(0.2)),
+		Temperature: ptr(float32(0.2)),
 	}
 
 	res, err := c.client.Models.GenerateContent(ctx, c.model, genai.Text(req.UserPrompt), config)
