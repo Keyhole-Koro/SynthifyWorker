@@ -4,9 +4,11 @@ import (
 	"context"
 	"path/filepath"
 
+	"github.com/Keyhole-Koro/SynthifyShared/config"
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	workercontext "github.com/synthify/backend/worker/pkg/worker/context"
+	workerllm "github.com/synthify/backend/worker/pkg/worker/llm"
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 	"github.com/synthify/backend/worker/pkg/worker/stages"
 )
@@ -43,18 +45,23 @@ func NewProcessor(jobRepo documentRepo, graphRepo graphRepo) *Processor {
 
 func NewProcessorWithNotifier(jobRepo documentRepo, graphRepo graphRepo, notifier jobstatus.Notifier) *Processor {
 	assembler := workercontext.NewDefaultAssembler(filepath.Join("worker", "pkg", "worker", "prompts"))
+	llmConfig := config.LoadLLM()
+	var llmClient workerllm.Client
+	if llmConfig.Enabled() {
+		llmClient = workerllm.NewRetryingClient(workerllm.NewGeminiClient(llmConfig), 2)
+	}
 	runner := pipeline.NewRunner(
 		jobRepo,
 		notifier,
 		&stages.RawIntakeStage{},
 		&stages.NormalizationStage{},
 		&stages.TextExtractionStage{},
-		stages.NewSemanticChunkingStage(assembler),
-		stages.NewBriefGenerationStage(assembler),
-		stages.NewPass1ExtractionStage(assembler, 5),
+		stages.NewSemanticChunkingStage(assembler, llmClient),
+		stages.NewBriefGenerationStage(assembler, llmClient),
+		stages.NewPass1ExtractionStage(assembler, llmClient, 5),
 		stages.NewPass2SynthesisStage(assembler),
 		stages.NewPersistenceStage(combinedRepo{documentRepo: jobRepo, graphRepo: graphRepo}),
-		stages.NewHTMLSummaryGenerationStage(graphRepo, assembler, 10),
+		stages.NewHTMLSummaryGenerationStage(graphRepo, assembler, llmClient, 10),
 	)
 	return &Processor{runner: runner}
 }

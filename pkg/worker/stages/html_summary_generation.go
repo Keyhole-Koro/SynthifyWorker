@@ -3,6 +3,7 @@ package stages
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	workercontext "github.com/synthify/backend/worker/pkg/worker/context"
+	workerllm "github.com/synthify/backend/worker/pkg/worker/llm"
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 )
 
@@ -20,14 +22,15 @@ type SummaryRepository interface {
 type HTMLSummaryGenerationStage struct {
 	repo        SummaryRepository
 	assembler   workercontext.Assembler
+	llm         workerllm.Client
 	concurrency int
 }
 
-func NewHTMLSummaryGenerationStage(repo SummaryRepository, assembler workercontext.Assembler, concurrency int) *HTMLSummaryGenerationStage {
+func NewHTMLSummaryGenerationStage(repo SummaryRepository, assembler workercontext.Assembler, llm workerllm.Client, concurrency int) *HTMLSummaryGenerationStage {
 	if concurrency <= 0 {
 		concurrency = 10
 	}
-	return &HTMLSummaryGenerationStage{repo: repo, assembler: assembler, concurrency: concurrency}
+	return &HTMLSummaryGenerationStage{repo: repo, assembler: assembler, llm: llm, concurrency: concurrency}
 }
 
 func (s *HTMLSummaryGenerationStage) Name() pipeline.StageName {
@@ -47,8 +50,17 @@ func (s *HTMLSummaryGenerationStage) Run(ctx context.Context, pctx *pipeline.Pip
 		group.Go(func() error {
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			_ = s.assembler.ForHTMLSummary(pctx, node.LocalID)
-			summary := buildHTMLSummary(node, adjacency[node.LocalID], pctx)
+			bundle := s.assembler.ForHTMLSummary(pctx, node.LocalID)
+			summary := ""
+			if s.llm != nil {
+				generated, err := s.generateSummary(groupCtx, bundle, node, adjacency[node.LocalID], pctx)
+				if err == nil && isAllowedHTMLSummary(generated) {
+					summary = generated
+				}
+			}
+			if summary == "" {
+				summary = buildHTMLSummary(node, adjacency[node.LocalID], pctx)
+			}
 			if summary == "" {
 				return nil
 			}
@@ -63,6 +75,25 @@ func (s *HTMLSummaryGenerationStage) Run(ctx context.Context, pctx *pipeline.Pip
 		})
 	}
 	return group.Wait()
+}
+
+func (s *HTMLSummaryGenerationStage) generateSummary(ctx context.Context, bundle workercontext.ContextBundle, node pipeline.SynthesizedNode, neighbors []string, pctx *pipeline.PipelineContext) (string, error) {
+	var related []string
+	for _, localID := range neighbors {
+		nodeID := pctx.NodeIDMap[localID]
+		if nodeID == "" {
+			continue
+		}
+		related = append(related, fmt.Sprintf("- %s (%s)", labelForLocalID(localID, pctx), nodeID))
+	}
+	userPrompt := strings.TrimSpace(bundle.UserPrompt + "\n" +
+		"Label: " + node.Label + "\n" +
+		"Description: " + node.Description + "\n" +
+		"Related nodes:\n" + strings.Join(related, "\n"))
+	return s.llm.GenerateText(ctx, workerllm.TextRequest{
+		SystemPrompt: bundle.SystemPrompt + "\nUse only allowed tags: table, thead, tbody, tr, th, td, ul, ol, li, p, h3, h4, strong, em, a. Links must use only data-paper-id.",
+		UserPrompt:   userPrompt,
+	})
 }
 
 func buildAdjacency(edges []pipeline.SynthesizedEdge) map[string][]string {
@@ -111,4 +142,27 @@ func escapeHTML(value string) string {
 		`"`, "&quot;",
 	)
 	return replacer.Replace(value)
+}
+
+var htmlTagPattern = regexp.MustCompile(`(?i)</?([a-z0-9]+)\b`)
+
+func isAllowedHTMLSummary(value string) bool {
+	if strings.TrimSpace(value) == "" {
+		return false
+	}
+	lowered := strings.ToLower(value)
+	if strings.Contains(lowered, "href=") || strings.Contains(lowered, "onclick=") || strings.Contains(lowered, "style=") {
+		return false
+	}
+	allowed := map[string]bool{
+		"table": true, "thead": true, "tbody": true, "tr": true, "th": true, "td": true,
+		"ul": true, "ol": true, "li": true, "p": true, "h3": true, "h4": true,
+		"strong": true, "em": true, "a": true,
+	}
+	for _, match := range htmlTagPattern.FindAllStringSubmatch(lowered, -1) {
+		if !allowed[match[1]] {
+			return false
+		}
+	}
+	return true
 }

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 
+	"github.com/Keyhole-Koro/SynthifyShared/config"
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 )
 
@@ -78,9 +78,5 @@ func validateDispatchRequest(req DispatchRequest) error {
 }
 
 func ServiceMode() string {
-	mode := os.Getenv("SERVICE_MODE")
-	if mode == "" {
-		return "api"
-	}
-	return mode
+	return config.LoadService().Mode
 }

@@ -2,6 +2,7 @@ package stages
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	workercontext "github.com/synthify/backend/worker/pkg/worker/context"
+	workerllm "github.com/synthify/backend/worker/pkg/worker/llm"
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 )
 
@@ -17,14 +19,15 @@ var metricPattern = regexp.MustCompile(`\b\d+(?:\.\d+)?%?`)
 
 type Pass1ExtractionStage struct {
 	assembler   workercontext.Assembler
+	llm         workerllm.Client
 	concurrency int
 }
 
-func NewPass1ExtractionStage(assembler workercontext.Assembler, concurrency int) *Pass1ExtractionStage {
+func NewPass1ExtractionStage(assembler workercontext.Assembler, llm workerllm.Client, concurrency int) *Pass1ExtractionStage {
 	if concurrency <= 0 {
 		concurrency = 5
 	}
-	return &Pass1ExtractionStage{assembler: assembler, concurrency: concurrency}
+	return &Pass1ExtractionStage{assembler: assembler, llm: llm, concurrency: concurrency}
 }
 
 func (s *Pass1ExtractionStage) Name() pipeline.StageName { return pipeline.StagePass1Extraction }
@@ -39,8 +42,15 @@ func (s *Pass1ExtractionStage) Run(ctx context.Context, pctx *pipeline.PipelineC
 		group.Go(func() error {
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			_ = s.assembler.ForPass1(pctx, chunk.ChunkIndex)
+			bundle := s.assembler.ForPass1(pctx, chunk.ChunkIndex)
 			nodes := extractRawNodes(chunk)
+			if s.llm != nil {
+				llmNodes, err := s.extractWithLLM(groupCtx, bundle, chunk.ChunkIndex)
+				if err != nil {
+					return err
+				}
+				nodes = llmNodes
+			}
 			if len(nodes) == 0 {
 				return fmt.Errorf("chunk %d produced no nodes", chunk.ChunkIndex)
 			}
@@ -60,6 +70,48 @@ func (s *Pass1ExtractionStage) Run(ctx context.Context, pctx *pipeline.PipelineC
 	}
 	pctx.Pass1Results = results
 	return nil
+}
+
+func (s *Pass1ExtractionStage) extractWithLLM(ctx context.Context, bundle workercontext.ContextBundle, chunkIndex int) ([]pipeline.RawNode, error) {
+	resp, err := s.llm.GenerateStructured(ctx, workerllm.StructuredRequest{
+		SystemPrompt: bundle.SystemPrompt + "\nReturn JSON: {\"nodes\":[{\"local_id\":\"n1\",\"label\":\"...\",\"category\":\"concept|entity|claim|evidence|counter\",\"level\":0,\"entity_type\":\"\",\"description\":\"...\",\"source_chunk_id\":\"c_000\"}]}",
+		UserPrompt:   bundle.UserPrompt,
+		FileURIs:     bundle.FileURIs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var parsed struct {
+		Nodes []pipeline.RawNode `json:"nodes"`
+	}
+	if err := json.Unmarshal(resp, &parsed); err != nil {
+		return nil, err
+	}
+	var out []pipeline.RawNode
+	expectedChunkID := fmt.Sprintf("c_%03d", chunkIndex)
+	for _, node := range parsed.Nodes {
+		node.LocalID = strings.TrimSpace(node.LocalID)
+		node.Label = strings.TrimSpace(node.Label)
+		node.Category = normalizeCategory(node.Category)
+		node.Description = strings.TrimSpace(node.Description)
+		if node.LocalID == "" || node.Label == "" || node.Category == "" {
+			continue
+		}
+		if node.Level < 0 || node.Level > 3 {
+			continue
+		}
+		if strings.TrimSpace(node.SourceChunkID) != expectedChunkID {
+			continue
+		}
+		if node.Category == "entity" && strings.TrimSpace(node.EntityType) == "" {
+			node.EntityType = "unspecified"
+		}
+		out = append(out, node)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("chunk %d produced no valid llm nodes", chunkIndex)
+	}
+	return out, nil
 }
 
 func extractRawNodes(chunk pipeline.Chunk) []pipeline.RawNode {
