@@ -3,10 +3,10 @@ package workercontext
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	workerprompts "github.com/synthify/backend/worker/pkg/worker/prompts"
 )
 
 type DefaultAssembler struct {
@@ -18,20 +18,11 @@ func NewDefaultAssembler(promptDir string) *DefaultAssembler {
 }
 
 func (a *DefaultAssembler) ForChunking(pctx *pipeline.PipelineContext) ContextBundle {
-	return ContextBundle{
-		SystemPrompt:  a.readPrompt("semantic_chunking"),
-		UserPrompt:    pctx.RawText,
-		FileURIs:      []string{pctx.FileURI},
-		TokenEstimate: estimateTokens(pctx.RawText),
-	}
+	return a.buildBundle(workerprompts.SemanticChunking, pctx.RawText, pctx.SourceFiles, estimateTokens(pctx.RawText))
 }
 
 func (a *DefaultAssembler) ForBriefGeneration(pctx *pipeline.PipelineContext) ContextBundle {
-	return ContextBundle{
-		SystemPrompt:  "Generate a high-level brief grounded in the source text.",
-		UserPrompt:    strings.Join(pctx.Outline, "\n"),
-		TokenEstimate: estimateTokens(pctx.RawText),
-	}
+	return a.buildBundle(workerprompts.BriefGeneration, strings.Join(pctx.Outline, "\n"), nil, estimateTokens(pctx.RawText))
 }
 
 func (a *DefaultAssembler) ForPass1(pctx *pipeline.PipelineContext, chunkIdx int) ContextBundle {
@@ -39,20 +30,12 @@ func (a *DefaultAssembler) ForPass1(pctx *pipeline.PipelineContext, chunkIdx int
 	if chunkIdx >= 0 && chunkIdx < len(pctx.Chunks) {
 		chunkText = pctx.Chunks[chunkIdx].Text
 	}
-	return ContextBundle{
-		SystemPrompt:  a.readPrompt("pass1_extraction"),
-		UserPrompt:    chunkText,
-		FileURIs:      []string{pctx.FileURI},
-		TokenEstimate: estimateTokens(chunkText),
-	}
+	return a.buildBundle(workerprompts.Pass1Extraction, chunkText, pctx.SourceFiles, estimateTokens(chunkText))
 }
 
 func (a *DefaultAssembler) ForPass2Normal(pctx *pipeline.PipelineContext) ContextBundle {
-	return ContextBundle{
-		SystemPrompt:  a.readPrompt("pass2_synthesis"),
-		UserPrompt:    strings.Join(pctx.Outline, "\n"),
-		TokenEstimate: estimateTokens(strings.Join(pctx.Outline, "\n")) + len(pctx.SynthesizedNodes)*20,
-	}
+	userPrompt := strings.Join(pctx.Outline, "\n")
+	return a.buildBundle(workerprompts.Pass2Synthesis, userPrompt, nil, estimateTokens(userPrompt)+len(pctx.SynthesizedNodes)*20)
 }
 
 func (a *DefaultAssembler) ForPass2Lite(pctx *pipeline.PipelineContext, sectionIdx int) ContextBundle {
@@ -64,15 +47,24 @@ func (a *DefaultAssembler) ForPass2Final(pctx *pipeline.PipelineContext) Context
 }
 
 func (a *DefaultAssembler) ForHTMLSummary(pctx *pipeline.PipelineContext, nodeLocalID string) ContextBundle {
+	return a.buildBundle(workerprompts.HTMLSummary, fmt.Sprintf("node=%s", nodeLocalID), nil, 128)
+}
+
+func (a *DefaultAssembler) buildBundle(promptName, userPrompt string, sourceFiles []pipeline.SourceFile, tokenEstimate int) ContextBundle {
+	spec := workerprompts.MustLookup(promptName)
 	return ContextBundle{
-		SystemPrompt:  a.readPrompt("html_summary"),
-		UserPrompt:    fmt.Sprintf("node=%s", nodeLocalID),
-		TokenEstimate: 128,
+		SystemPrompt:  a.readPrompt(promptName),
+		UserPrompt:    userPrompt,
+		SourceFiles:   append([]pipeline.SourceFile(nil), sourceFiles...),
+		TokenEstimate: tokenEstimate,
+		PromptName:    spec.Name,
+		PromptVersion: spec.PromptVersion,
+		SchemaVersion: spec.SchemaVersion,
 	}
 }
 
 func (a *DefaultAssembler) readPrompt(name string) string {
-	path := filepath.Join(a.promptDir, name, "v1.txt")
+	path := workerprompts.Path(a.promptDir, name)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""

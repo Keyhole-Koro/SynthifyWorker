@@ -91,7 +91,7 @@ func (s *HTMLSummaryGenerationStage) generateSummary(ctx context.Context, bundle
 		"Description: " + node.Description + "\n" +
 		"Related nodes:\n" + strings.Join(related, "\n"))
 	return s.llm.GenerateText(ctx, workerllm.TextRequest{
-		SystemPrompt: bundle.SystemPrompt + "\nUse only allowed tags: table, thead, tbody, tr, th, td, ul, ol, li, p, h3, h4, strong, em, a. Links must use only data-paper-id.",
+		SystemPrompt: bundle.SystemPrompt + "\nSchema version: " + bundle.SchemaVersion + "\nUse only allowed tags: table, thead, tbody, tr, th, td, ul, ol, li, p, h3, h4, strong, em, a. Links must use only data-paper-id.",
 		UserPrompt:   userPrompt,
 	})
 }

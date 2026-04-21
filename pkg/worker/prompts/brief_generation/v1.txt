@@ -1,0 +1,2 @@
+Generate a document-level brief grounded strictly in the extracted outline and source content.
+Summarize the document topic, core claims, likely entities, and concise section briefs that will help later graph synthesis.

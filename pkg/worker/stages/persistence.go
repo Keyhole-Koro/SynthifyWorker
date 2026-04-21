@@ -12,7 +12,7 @@ import (
 type GraphRepository interface {
 	GetWorkspaceRootNodeID(graphID string) (string, bool)
 	SaveDocumentChunks(documentID string, chunks []*domain.DocumentChunk) error
-	CreateStructuredNode(graphID, label, category string, level int, entityType, description, summaryHTML, createdBy string) *domain.Node
+	CreateStructuredNode(graphID, label string, level int, entityType, description, summaryHTML, createdBy string) *domain.Node
 	CreateEdge(graphID, sourceNodeID, targetNodeID, edgeType, description string) *domain.Edge
 	UpsertNodeSource(nodeID, documentID, chunkID, sourceText string, confidence float64) error
 	UpsertEdgeSource(edgeID, documentID, chunkID, sourceText string, confidence float64) error
@@ -50,7 +50,6 @@ func (s *PersistenceStage) Run(ctx context.Context, pctx *pipeline.PipelineConte
 		created := s.repo.CreateStructuredNode(
 			pctx.GraphID,
 			node.Label,
-			node.Category,
 			node.Level,
 			node.EntityType,
 			node.Description,
@@ -61,9 +60,11 @@ func (s *PersistenceStage) Run(ctx context.Context, pctx *pipeline.PipelineConte
 			return fmt.Errorf("failed to persist node %s", node.LocalID)
 		}
 		pctx.NodeIDMap[node.LocalID] = created.NodeID
-		if chunkText := strings.TrimSpace(chunkTextByID[node.SourceChunkID]); chunkText != "" {
-			if err := s.repo.UpsertNodeSource(created.NodeID, pctx.DocumentID, node.SourceChunkID, chunkText, 1); err != nil {
-				return err
+		for _, chunkID := range node.SourceChunkIDs {
+			if chunkText := strings.TrimSpace(chunkTextByID[chunkID]); chunkText != "" {
+				if err := s.repo.UpsertNodeSource(created.NodeID, pctx.DocumentID, chunkID, chunkText, 1); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -77,9 +78,11 @@ func (s *PersistenceStage) Run(ctx context.Context, pctx *pipeline.PipelineConte
 		if created == nil {
 			return fmt.Errorf("failed to persist edge %s->%s", edge.SourceLocalID, edge.TargetLocalID)
 		}
-		if chunkText := strings.TrimSpace(chunkTextByID[edge.SourceChunkID]); chunkText != "" {
-			if err := s.repo.UpsertEdgeSource(created.EdgeID, pctx.DocumentID, edge.SourceChunkID, chunkText, 1); err != nil {
-				return err
+		for _, chunkID := range edge.SourceChunkIDs {
+			if chunkText := strings.TrimSpace(chunkTextByID[chunkID]); chunkText != "" {
+				if err := s.repo.UpsertEdgeSource(created.EdgeID, pctx.DocumentID, chunkID, chunkText, 1); err != nil {
+					return err
+				}
 			}
 		}
 	}

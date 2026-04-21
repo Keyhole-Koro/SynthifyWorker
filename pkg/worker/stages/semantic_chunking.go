@@ -56,9 +56,9 @@ func (s *SemanticChunkingStage) Run(ctx context.Context, pctx *pipeline.Pipeline
 
 func (s *SemanticChunkingStage) generateChunks(ctx context.Context, bundle workercontext.ContextBundle, pctx *pipeline.PipelineContext) ([]pipeline.Chunk, []string, error) {
 	resp, err := s.llm.GenerateStructured(ctx, workerllm.StructuredRequest{
-		SystemPrompt: bundle.SystemPrompt + "\nReturn JSON: {\"chunks\":[{\"chunk_index\":0,\"heading\":\"...\",\"text\":\"...\"}]}",
+		SystemPrompt: bundle.SystemPrompt + "\nSchema version: " + bundle.SchemaVersion + "\nReturn JSON: {\"chunks\":[{\"chunk_index\":0,\"heading\":\"...\",\"text\":\"...\"}]}",
 		UserPrompt:   bundle.UserPrompt,
-		FileURIs:     bundle.FileURIs,
+		SourceFiles:  bundle.SourceFiles,
 		Schema: map[string]any{
 			"type": "object",
 		},

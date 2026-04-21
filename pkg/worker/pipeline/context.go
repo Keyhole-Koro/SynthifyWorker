@@ -62,32 +62,30 @@ type Pass1ChunkResult struct {
 }
 
 type RawNode struct {
-	LocalID       string
-	Label         string
-	Category      string
-	Level         int
-	EntityType    string
-	Description   string
-	SourceChunkID string
+	LocalID        string
+	Label          string
+	Level          int
+	EntityType     string
+	Description    string
+	SourceChunkIDs []string
 }
 
 type SynthesizedNode struct {
-	LocalID       string
-	Label         string
-	Category      string
-	Level         int
-	EntityType    string
-	Description   string
-	SummaryHTML   string
-	ParentLocalID string
-	ChildLocalIDs []string
-	SourceChunkID string
+	LocalID        string
+	Label          string
+	Level          int
+	EntityType     string
+	Description    string
+	SummaryHTML    string
+	ParentLocalID  string
+	ChildLocalIDs  []string
+	SourceChunkIDs []string
 }
 
 type SynthesizedEdge struct {
-	SourceLocalID string
-	TargetLocalID string
-	EdgeType      string
-	Description   string
-	SourceChunkID string
+	SourceLocalID  string
+	TargetLocalID  string
+	EdgeType       string
+	Description    string
+	SourceChunkIDs []string
 }

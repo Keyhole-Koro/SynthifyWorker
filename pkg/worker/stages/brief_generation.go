@@ -53,7 +53,7 @@ func (s *BriefGenerationStage) Run(ctx context.Context, pctx *pipeline.PipelineC
 
 func (s *BriefGenerationStage) generateBrief(ctx context.Context, bundle workercontext.ContextBundle) (*pipeline.DocumentBrief, []pipeline.SectionBrief, error) {
 	resp, err := s.llm.GenerateStructured(ctx, workerllm.StructuredRequest{
-		SystemPrompt: bundle.SystemPrompt + "\nReturn JSON with document_brief and section_briefs arrays.",
+		SystemPrompt: bundle.SystemPrompt + "\nSchema version: " + bundle.SchemaVersion + "\nReturn JSON with document_brief and section_briefs arrays.",
 		UserPrompt:   bundle.UserPrompt,
 	})
 	if err != nil {

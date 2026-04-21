@@ -74,9 +74,9 @@ func (s *Pass1ExtractionStage) Run(ctx context.Context, pctx *pipeline.PipelineC
 
 func (s *Pass1ExtractionStage) extractWithLLM(ctx context.Context, bundle workercontext.ContextBundle, chunkIndex int) ([]pipeline.RawNode, error) {
 	resp, err := s.llm.GenerateStructured(ctx, workerllm.StructuredRequest{
-		SystemPrompt: bundle.SystemPrompt + "\nReturn JSON: {\"nodes\":[{\"local_id\":\"n1\",\"label\":\"...\",\"category\":\"concept|entity|claim|evidence|counter\",\"level\":0,\"entity_type\":\"\",\"description\":\"...\",\"source_chunk_id\":\"c_000\"}]}",
+		SystemPrompt: bundle.SystemPrompt + "\nSchema version: " + bundle.SchemaVersion + "\nReturn JSON: {\"nodes\":[{\"local_id\":\"n1\",\"label\":\"...\",\"level\":1,\"entity_type\":\"\",\"description\":\"...\",\"source_chunk_ids\":[\"c_000\"]}]}",
 		UserPrompt:   bundle.UserPrompt,
-		FileURIs:     bundle.FileURIs,
+		SourceFiles:  bundle.SourceFiles,
 	})
 	if err != nil {
 		return nil, err
@@ -92,19 +92,16 @@ func (s *Pass1ExtractionStage) extractWithLLM(ctx context.Context, bundle worker
 	for _, node := range parsed.Nodes {
 		node.LocalID = strings.TrimSpace(node.LocalID)
 		node.Label = strings.TrimSpace(node.Label)
-		node.Category = normalizeCategory(node.Category)
 		node.Description = strings.TrimSpace(node.Description)
-		if node.LocalID == "" || node.Label == "" || node.Category == "" {
+		if node.LocalID == "" || node.Label == "" {
 			continue
 		}
 		if node.Level < 0 || node.Level > 3 {
 			continue
 		}
-		if strings.TrimSpace(node.SourceChunkID) != expectedChunkID {
+		node.SourceChunkIDs = uniqueNonEmpty(node.SourceChunkIDs)
+		if len(node.SourceChunkIDs) != 1 || node.SourceChunkIDs[0] != expectedChunkID {
 			continue
-		}
-		if node.Category == "entity" && strings.TrimSpace(node.EntityType) == "" {
-			node.EntityType = "unspecified"
 		}
 		out = append(out, node)
 	}
@@ -118,23 +115,21 @@ func extractRawNodes(chunk pipeline.Chunk) []pipeline.RawNode {
 	var nodes []pipeline.RawNode
 	if strings.TrimSpace(chunk.Heading) != "" {
 		nodes = append(nodes, pipeline.RawNode{
-			LocalID:       fmt.Sprintf("heading_%d", chunk.ChunkIndex),
-			Label:         chunk.Heading,
-			Category:      "concept",
-			Level:         1,
-			Description:   firstSentence(chunk.Text),
-			SourceChunkID: fmt.Sprintf("c_%03d", chunk.ChunkIndex),
+			LocalID:        fmt.Sprintf("heading_%d", chunk.ChunkIndex),
+			Label:          chunk.Heading,
+			Level:          1,
+			Description:    firstSentence(chunk.Text),
+			SourceChunkIDs: []string{fmt.Sprintf("c_%03d", chunk.ChunkIndex)},
 		})
 	}
 	for idx, match := range metricPattern.FindAllString(chunk.Text, -1) {
 		nodes = append(nodes, pipeline.RawNode{
-			LocalID:       fmt.Sprintf("metric_%d_%d", chunk.ChunkIndex, idx),
-			Label:         match,
-			Category:      "entity",
-			Level:         3,
-			EntityType:    "metric",
-			Description:   "Extracted metric from source text",
-			SourceChunkID: fmt.Sprintf("c_%03d", chunk.ChunkIndex),
+			LocalID:        fmt.Sprintf("metric_%d_%d", chunk.ChunkIndex, idx),
+			Label:          match,
+			Level:          3,
+			EntityType:     "metric",
+			Description:    "Extracted metric from source text",
+			SourceChunkIDs: []string{fmt.Sprintf("c_%03d", chunk.ChunkIndex)},
 		})
 	}
 	lines := strings.Split(chunk.Text, "\n")
@@ -145,12 +140,11 @@ func extractRawNodes(chunk pipeline.Chunk) []pipeline.RawNode {
 		}
 		if idx == 0 && chunk.Heading == "" {
 			nodes = append(nodes, pipeline.RawNode{
-				LocalID:       fmt.Sprintf("lead_%d", chunk.ChunkIndex),
-				Label:         truncateLabel(line),
-				Category:      "claim",
-				Level:         2,
-				Description:   line,
-				SourceChunkID: fmt.Sprintf("c_%03d", chunk.ChunkIndex),
+				LocalID:        fmt.Sprintf("lead_%d", chunk.ChunkIndex),
+				Label:          truncateLabel(line),
+				Level:          2,
+				Description:    line,
+				SourceChunkIDs: []string{fmt.Sprintf("c_%03d", chunk.ChunkIndex)},
 			})
 			break
 		}

@@ -45,24 +45,22 @@ func (s *Pass2SynthesisStage) Run(ctx context.Context, pctx *pipeline.PipelineCo
 
 func (s *Pass2SynthesisStage) synthesizeWithLLM(ctx context.Context, bundle workercontext.ContextBundle, pctx *pipeline.PipelineContext) ([]pipeline.SynthesizedNode, []pipeline.SynthesizedEdge, error) {
 	resp, err := s.llm.GenerateStructured(ctx, workerllm.StructuredRequest{
-		SystemPrompt: bundle.SystemPrompt + `
+		SystemPrompt: bundle.SystemPrompt + "\nSchema version: " + bundle.SchemaVersion + `
 Return JSON:
 {
   "document_root": {
     "label": "...",
-    "category": "concept",
     "description": "..."
   },
   "nodes": [
     {
       "local_id": "topic_a",
       "label": "...",
-      "category": "concept|entity|claim|evidence|counter",
       "level": 1,
       "entity_type": "",
       "description": "...",
       "parent_local_id": "doc_root",
-      "source_chunk_id": "c_000"
+      "source_chunk_ids": ["c_000"]
     }
   ],
   "edges": [
@@ -71,14 +69,14 @@ Return JSON:
       "target_local_id": "claim_b",
       "edge_type": "hierarchical|supports|contradicts|measured_by|related_to",
       "description": "",
-      "source_chunk_id": "c_000"
+      "source_chunk_ids": ["c_000"]
     }
   ]
 }
 Rules:
 - local_id must be unique and must not be doc_root.
 - parent_local_id must reference doc_root or another emitted node.
-- Every node must preserve a valid source_chunk_id from the pass1 input.
+- Every node must preserve one or more valid source_chunk_ids from the pass1 input.
 - Prefer a compact hierarchy under doc_root; add non-hierarchical edges only when strongly supported.`,
 		UserPrompt: buildPass2UserPrompt(bundle, pctx),
 	})
@@ -89,25 +87,23 @@ Rules:
 	var parsed struct {
 		DocumentRoot struct {
 			Label       string `json:"label"`
-			Category    string `json:"category"`
 			Description string `json:"description"`
 		} `json:"document_root"`
 		Nodes []struct {
-			LocalID       string `json:"local_id"`
-			Label         string `json:"label"`
-			Category      string `json:"category"`
-			Level         int    `json:"level"`
-			EntityType    string `json:"entity_type"`
-			Description   string `json:"description"`
-			ParentLocalID string `json:"parent_local_id"`
-			SourceChunkID string `json:"source_chunk_id"`
+			LocalID        string   `json:"local_id"`
+			Label          string   `json:"label"`
+			Level          int      `json:"level"`
+			EntityType     string   `json:"entity_type"`
+			Description    string   `json:"description"`
+			ParentLocalID  string   `json:"parent_local_id"`
+			SourceChunkIDs []string `json:"source_chunk_ids"`
 		} `json:"nodes"`
 		Edges []struct {
-			SourceLocalID string `json:"source_local_id"`
-			TargetLocalID string `json:"target_local_id"`
-			EdgeType      string `json:"edge_type"`
-			Description   string `json:"description"`
-			SourceChunkID string `json:"source_chunk_id"`
+			SourceLocalID  string   `json:"source_local_id"`
+			TargetLocalID  string   `json:"target_local_id"`
+			EdgeType       string   `json:"edge_type"`
+			Description    string   `json:"description"`
+			SourceChunkIDs []string `json:"source_chunk_ids"`
 		} `json:"edges"`
 	}
 	if err := json.Unmarshal(resp, &parsed); err != nil {
@@ -120,7 +116,6 @@ Rules:
 		"doc_root": {
 			LocalID:     "doc_root",
 			Label:       rootLabel,
-			Category:    "concept",
 			Level:       0,
 			Description: rootDescription,
 		},
@@ -130,27 +125,25 @@ Rules:
 	for _, raw := range parsed.Nodes {
 		localID := sanitizeLocalID(raw.LocalID)
 		label := strings.TrimSpace(raw.Label)
-		category := normalizeCategory(raw.Category)
 		parentLocalID := sanitizeParentLocalID(raw.ParentLocalID)
-		sourceChunkID := strings.TrimSpace(raw.SourceChunkID)
+		sourceChunkIDs := filterValidChunkIDs(raw.SourceChunkIDs, validChunkIDs)
 		if localID == "" || label == "" || localID == "doc_root" {
 			continue
 		}
 		if _, exists := nodesByID[localID]; exists {
 			continue
 		}
-		if !validChunkIDs[sourceChunkID] {
+		if len(sourceChunkIDs) == 0 {
 			continue
 		}
 		nodesByID[localID] = pipeline.SynthesizedNode{
-			LocalID:       localID,
-			Label:         label,
-			Category:      category,
-			Level:         clampLevel(raw.Level),
-			EntityType:    normalizeEntityType(category, raw.EntityType),
-			Description:   strings.TrimSpace(raw.Description),
-			ParentLocalID: parentLocalID,
-			SourceChunkID: sourceChunkID,
+			LocalID:        localID,
+			Label:          label,
+			Level:          clampLevel(raw.Level),
+			EntityType:     normalizeEntityType(raw.Level, raw.EntityType),
+			Description:    strings.TrimSpace(raw.Description),
+			ParentLocalID:  parentLocalID,
+			SourceChunkIDs: sourceChunkIDs,
 		}
 	}
 	if len(nodesByID) == 1 {
@@ -182,10 +175,10 @@ Rules:
 		key := edgeKey(node.ParentLocalID, localID, "hierarchical")
 		seenEdges[key] = true
 		edges = append(edges, pipeline.SynthesizedEdge{
-			SourceLocalID: node.ParentLocalID,
-			TargetLocalID: localID,
-			EdgeType:      "hierarchical",
-			SourceChunkID: node.SourceChunkID,
+			SourceLocalID:  node.ParentLocalID,
+			TargetLocalID:  localID,
+			EdgeType:       "hierarchical",
+			SourceChunkIDs: append([]string(nil), node.SourceChunkIDs...),
 		})
 	}
 
@@ -193,11 +186,11 @@ Rules:
 		source := sanitizeParentLocalID(raw.SourceLocalID)
 		target := sanitizeParentLocalID(raw.TargetLocalID)
 		edgeType := normalizeEdgeType(raw.EdgeType)
-		sourceChunkID := strings.TrimSpace(raw.SourceChunkID)
+		sourceChunkIDs := filterValidChunkIDs(raw.SourceChunkIDs, validChunkIDs)
 		if edgeType == "hierarchical" || source == "" || target == "" || source == target {
 			continue
 		}
-		if !validChunkIDs[sourceChunkID] {
+		if len(sourceChunkIDs) == 0 {
 			continue
 		}
 		if _, ok := nodesByID[source]; !ok {
@@ -212,11 +205,11 @@ Rules:
 		}
 		seenEdges[key] = true
 		edges = append(edges, pipeline.SynthesizedEdge{
-			SourceLocalID: source,
-			TargetLocalID: target,
-			EdgeType:      edgeType,
-			Description:   strings.TrimSpace(raw.Description),
-			SourceChunkID: sourceChunkID,
+			SourceLocalID:  source,
+			TargetLocalID:  target,
+			EdgeType:       edgeType,
+			Description:    strings.TrimSpace(raw.Description),
+			SourceChunkIDs: sourceChunkIDs,
 		})
 	}
 
@@ -265,14 +258,13 @@ func buildPass2UserPrompt(bundle workercontext.ContextBundle, pctx *pipeline.Pip
 		result := pctx.Pass1Results[key]
 		out.WriteString(fmt.Sprintf("Chunk c_%03d:\n", result.ChunkIndex))
 		for _, node := range result.Nodes {
-			out.WriteString(fmt.Sprintf("- local_id=%s | label=%s | category=%s | level=%d | entity_type=%s | description=%s | source_chunk_id=%s\n",
+			out.WriteString(fmt.Sprintf("- local_id=%s | label=%s | level=%d | entity_type=%s | description=%s | source_chunk_ids=%s\n",
 				node.LocalID,
 				node.Label,
-				node.Category,
 				node.Level,
 				node.EntityType,
 				node.Description,
-				node.SourceChunkID,
+				strings.Join(node.SourceChunkIDs, ","),
 			))
 		}
 	}
@@ -286,7 +278,6 @@ func synthesizeHeuristically(pctx *pipeline.PipelineContext) ([]pipeline.Synthes
 		rootID: {
 			LocalID:     rootID,
 			Label:       rootLabel,
-			Category:    "concept",
 			Level:       0,
 			Description: firstSentence(pctx.RawText),
 		},
@@ -303,16 +294,15 @@ func synthesizeHeuristically(pctx *pipeline.PipelineContext) ([]pipeline.Synthes
 		for _, rawNode := range result.Nodes {
 			localID := fmt.Sprintf("p1_%d_%s", key, rawNode.LocalID)
 			node := pipeline.SynthesizedNode{
-				LocalID:       localID,
-				Label:         rawNode.Label,
-				Category:      normalizeCategory(rawNode.Category),
-				Level:         clampLevel(rawNode.Level),
-				EntityType:    normalizeEntityType(rawNode.Category, rawNode.EntityType),
-				Description:   rawNode.Description,
-				ParentLocalID: rootID,
-				SourceChunkID: rawNode.SourceChunkID,
+				LocalID:        localID,
+				Label:          rawNode.Label,
+				Level:          clampLevel(rawNode.Level),
+				EntityType:     normalizeEntityType(rawNode.Level, rawNode.EntityType),
+				Description:    rawNode.Description,
+				ParentLocalID:  rootID,
+				SourceChunkIDs: append([]string(nil), rawNode.SourceChunkIDs...),
 			}
-			if node.Category == "concept" && parent == "" {
+			if node.Level == 1 && parent == "" {
 				parent = localID
 				node.ParentLocalID = rootID
 			} else if parent != "" && node.Level >= 2 {
@@ -329,10 +319,10 @@ func synthesizeHeuristically(pctx *pipeline.PipelineContext) ([]pipeline.Synthes
 			continue
 		}
 		edges = append(edges, pipeline.SynthesizedEdge{
-			SourceLocalID: node.ParentLocalID,
-			TargetLocalID: node.LocalID,
-			EdgeType:      "hierarchical",
-			SourceChunkID: node.SourceChunkID,
+			SourceLocalID:  node.ParentLocalID,
+			TargetLocalID:  node.LocalID,
+			EdgeType:       "hierarchical",
+			SourceChunkIDs: append([]string(nil), node.SourceChunkIDs...),
 		})
 	}
 	return mapToSortedNodes(nodes), sortEdges(edges), nil
@@ -368,8 +358,10 @@ func validPass1ChunkIDs(pctx *pipeline.PipelineContext) map[string]bool {
 	out := make(map[string]bool, len(pctx.Pass1Results))
 	for _, result := range pctx.Pass1Results {
 		for _, node := range result.Nodes {
-			if strings.TrimSpace(node.SourceChunkID) != "" {
-				out[node.SourceChunkID] = true
+			for _, chunkID := range node.SourceChunkIDs {
+				if strings.TrimSpace(chunkID) != "" {
+					out[chunkID] = true
+				}
 			}
 		}
 	}
@@ -402,6 +394,16 @@ func sanitizeParentLocalID(value string) string {
 	return value
 }
 
+func filterValidChunkIDs(chunkIDs []string, validChunkIDs map[string]bool) []string {
+	var out []string
+	for _, chunkID := range uniqueNonEmpty(chunkIDs) {
+		if validChunkIDs[chunkID] {
+			out = append(out, chunkID)
+		}
+	}
+	return out
+}
+
 func edgeKey(source, target, edgeType string) string {
 	return source + "\x00" + target + "\x00" + edgeType
 }
@@ -422,23 +424,9 @@ func documentTopic(pctx *pipeline.PipelineContext) string {
 	return strings.TrimSpace(pctx.DocumentBrief.Topic)
 }
 
-func normalizeCategory(category string) string {
-	switch strings.TrimSpace(category) {
-	case "concept", "entity", "claim", "evidence", "counter":
-		return category
-	default:
-		return "concept"
-	}
-}
-
-func normalizeEntityType(category, entityType string) string {
-	if category != "entity" {
-		return ""
-	}
-	if strings.TrimSpace(entityType) == "" {
-		return "unspecified"
-	}
-	return entityType
+func normalizeEntityType(level int, entityType string) string {
+	_ = level
+	return strings.TrimSpace(entityType)
 }
 
 func clampLevel(level int) int {

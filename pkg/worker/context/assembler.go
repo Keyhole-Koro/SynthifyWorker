@@ -5,8 +5,11 @@ import "github.com/synthify/backend/worker/pkg/worker/pipeline"
 type ContextBundle struct {
 	SystemPrompt  string
 	UserPrompt    string
-	FileURIs      []string
+	SourceFiles   []pipeline.SourceFile
 	TokenEstimate int
+	PromptName    string
+	PromptVersion string
+	SchemaVersion string
 }
 
 type Assembler interface {

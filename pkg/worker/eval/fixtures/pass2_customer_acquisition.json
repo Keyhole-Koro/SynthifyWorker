@@ -1,0 +1,199 @@
+{
+  "id": "pass2_customer_acquisition",
+  "description": "Pass2 synthesis should produce a stable hierarchy with one support edge.",
+  "stage": "pass2_synthesis",
+  "input": {
+    "filename": "customer-acquisition-report.pdf",
+    "raw_text": "Customer acquisition performance improved in Q1. Paid search drove the strongest conversion rate gains. Supporting survey evidence indicates landing-page clarity increased form completions.",
+    "outline": [
+      "Overview",
+      "Paid Search",
+      "Survey Evidence"
+    ],
+    "document_brief": {
+      "topic": "Customer acquisition",
+      "level01_hints": [
+        "Overview",
+        "Paid Search",
+        "Survey Evidence"
+      ],
+      "claim_summary": "Paid search improved acquisition performance.",
+      "entities": [
+        "conversion rate",
+        "landing-page clarity"
+      ],
+      "outline": [
+        "Overview",
+        "Paid Search",
+        "Survey Evidence"
+      ]
+    },
+    "section_briefs": [
+      {
+        "heading": "Overview",
+        "topic": "Customer acquisition",
+        "node_candidates": [
+          "Customer acquisition"
+        ],
+        "connection_hints": "Document-level summary"
+      },
+      {
+        "heading": "Paid Search",
+        "topic": "Paid search impact",
+        "node_candidates": [
+          "Paid search",
+          "Conversion rate"
+        ],
+        "connection_hints": "Channel performance"
+      },
+      {
+        "heading": "Survey Evidence",
+        "topic": "Supporting evidence",
+        "node_candidates": [
+          "Landing-page clarity"
+        ],
+        "connection_hints": "Evidence for improvements"
+      }
+    ],
+    "pass1_results": [
+      {
+        "chunk_index": 0,
+        "nodes": [
+          {
+            "local_id": "overview",
+            "label": "Customer acquisition",
+            "level": 1,
+            "entity_type": "",
+            "description": "Document theme",
+            "source_chunk_ids": ["c_000"]
+          },
+          {
+            "local_id": "claim_paid_search",
+            "label": "Paid search improved performance",
+            "level": 2,
+            "entity_type": "",
+            "description": "Paid search drove the strongest gains",
+            "source_chunk_ids": ["c_000"]
+          }
+        ]
+      },
+      {
+        "chunk_index": 1,
+        "nodes": [
+          {
+            "local_id": "paid_search",
+            "label": "Paid search",
+            "level": 2,
+            "entity_type": "channel",
+            "description": "Acquisition channel",
+            "source_chunk_ids": ["c_001"]
+          },
+          {
+            "local_id": "conversion_rate",
+            "label": "Conversion rate",
+            "level": 3,
+            "entity_type": "metric",
+            "description": "Primary metric",
+            "source_chunk_ids": ["c_001"]
+          }
+        ]
+      },
+      {
+        "chunk_index": 2,
+        "nodes": [
+          {
+            "local_id": "survey_evidence",
+            "label": "Survey evidence",
+            "level": 2,
+            "entity_type": "",
+            "description": "Survey evidence supports the claim",
+            "source_chunk_ids": ["c_002"]
+          }
+        ]
+      }
+    ]
+  },
+  "llm_response": {
+    "document_root": {
+      "label": "Customer acquisition",
+      "description": "Customer acquisition performance summary."
+    },
+    "nodes": [
+      {
+        "local_id": "customer_acquisition",
+        "label": "Customer acquisition",
+        "level": 1,
+        "entity_type": "",
+        "description": "Document-level topic",
+        "parent_local_id": "doc_root",
+        "source_chunk_ids": ["c_000"]
+      },
+      {
+        "local_id": "paid_search_claim",
+        "label": "Paid search improved performance",
+        "level": 2,
+        "entity_type": "",
+        "description": "Paid search drove the strongest gains",
+        "parent_local_id": "customer_acquisition",
+        "source_chunk_ids": ["c_000"]
+      },
+      {
+        "local_id": "conversion_rate_metric",
+        "label": "Conversion rate",
+        "level": 3,
+        "entity_type": "metric",
+        "description": "Primary metric",
+        "parent_local_id": "paid_search_claim",
+        "source_chunk_ids": ["c_001"]
+      },
+      {
+        "local_id": "survey_evidence_node",
+        "label": "Survey evidence",
+        "level": 2,
+        "entity_type": "",
+        "description": "Survey evidence supports the claim",
+        "parent_local_id": "customer_acquisition",
+        "source_chunk_ids": ["c_002"]
+      }
+    ],
+    "edges": [
+      {
+        "source_local_id": "survey_evidence_node",
+        "target_local_id": "paid_search_claim",
+        "edge_type": "supports",
+        "description": "Survey findings support the claim",
+        "source_chunk_ids": ["c_002"]
+      }
+    ]
+  },
+  "expected": {
+    "min_node_count": 5,
+    "required_labels": [
+      "Customer acquisition",
+      "Paid search improved performance",
+      "Conversion rate",
+      "Survey evidence"
+    ],
+    "required_hierarchical_edges": [
+      {
+        "source": "doc_root",
+        "target": "customer_acquisition"
+      },
+      {
+        "source": "customer_acquisition",
+        "target": "paid_search_claim"
+      },
+      {
+        "source": "paid_search_claim",
+        "target": "conversion_rate_metric"
+      }
+    ],
+    "required_typed_edges": [
+      {
+        "source": "survey_evidence_node",
+        "target": "paid_search_claim",
+        "edge_type": "supports"
+      }
+    ]
+  }
+}
