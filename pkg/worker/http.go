@@ -32,12 +32,12 @@ func (h *InternalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	var req DispatchRequest
+	var req ExecutePlanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
-	if err := validateDispatchRequest(req); err != nil {
+	if err := validateExecutePlanRequest(req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -58,7 +58,7 @@ func (h *InternalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func validateDispatchRequest(req DispatchRequest) error {
+func validateExecutePlanRequest(req ExecutePlanRequest) error {
 	switch {
 	case req.JobID == "":
 		return errors.New("job_id is required")

@@ -15,9 +15,5 @@ type ContextBundle struct {
 type Assembler interface {
 	ForChunking(pctx *pipeline.PipelineContext) ContextBundle
 	ForBriefGeneration(pctx *pipeline.PipelineContext) ContextBundle
-	ForPass1(pctx *pipeline.PipelineContext, chunkIdx int) ContextBundle
-	ForPass2Normal(pctx *pipeline.PipelineContext) ContextBundle
-	ForPass2Lite(pctx *pipeline.PipelineContext, sectionIdx int) ContextBundle
-	ForPass2Final(pctx *pipeline.PipelineContext) ContextBundle
 	ForHTMLSummary(pctx *pipeline.PipelineContext, nodeLocalID string) ContextBundle
 }

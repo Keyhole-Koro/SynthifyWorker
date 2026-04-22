@@ -23,11 +23,11 @@ func NewConnectHandler(processor interface {
 	return &ConnectHandler{processor: processor, token: token}
 }
 
-func (h *ConnectHandler) ProcessPipeline(ctx context.Context, req *connect.Request[graphv1.ProcessPipelineRequest]) (*connect.Response[graphv1.ProcessPipelineResponse], error) {
+func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.Request[graphv1.ExecuteApprovedPlanRequest]) (*connect.Response[graphv1.ExecuteApprovedPlanResponse], error) {
 	if h.token != "" && req.Header().Get("X-Worker-Token") != h.token {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("forbidden"))
 	}
-	dispatchReq := DispatchRequest{
+	dispatchReq := ExecutePlanRequest{
 		JobID:       req.Msg.GetJobId(),
 		JobType:     req.Msg.GetJobType(),
 		DocumentID:  req.Msg.GetDocumentId(),
@@ -37,7 +37,7 @@ func (h *ConnectHandler) ProcessPipeline(ctx context.Context, req *connect.Reque
 		Filename:    req.Msg.GetFilename(),
 		MimeType:    req.Msg.GetMimeType(),
 	}
-	if err := validateDispatchRequest(dispatchReq); err != nil {
+	if err := validateExecutePlanRequest(dispatchReq); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if err := h.processor.Process(ctx, &pipeline.PipelineContext{
@@ -52,7 +52,7 @@ func (h *ConnectHandler) ProcessPipeline(ctx context.Context, req *connect.Reque
 	}); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&graphv1.ProcessPipelineResponse{Status: "ok"}), nil
+	return connect.NewResponse(&graphv1.ExecuteApprovedPlanResponse{Status: "ok"}), nil
 }
 
 func RequireWorkerToken(token string, next http.Handler) http.Handler {

@@ -11,7 +11,7 @@ import (
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 )
 
-type DispatchRequest struct {
+type ExecutePlanRequest struct {
 	JobID       string `json:"job_id"`
 	JobType     string `json:"job_type"`
 	DocumentID  string `json:"document_id"`
@@ -23,7 +23,7 @@ type DispatchRequest struct {
 }
 
 type Dispatcher interface {
-	Dispatch(ctx context.Context, req DispatchRequest) error
+	ExecuteApprovedPlan(ctx context.Context, req ExecutePlanRequest) error
 }
 
 type InlineDispatcher struct {
@@ -38,7 +38,7 @@ func NewInlineDispatcher(processor interface {
 	return &InlineDispatcher{processor: processor}
 }
 
-func (d *InlineDispatcher) Dispatch(ctx context.Context, req DispatchRequest) error {
+func (d *InlineDispatcher) ExecuteApprovedPlan(ctx context.Context, req ExecutePlanRequest) error {
 	return d.processor.Process(ctx, &pipeline.PipelineContext{
 		JobID:       req.JobID,
 		JobType:     req.JobType,
@@ -65,8 +65,8 @@ func NewHTTPDispatcher(baseURL, token string) *HTTPDispatcher {
 	}
 }
 
-func (d *HTTPDispatcher) Dispatch(ctx context.Context, req DispatchRequest) error {
-	connectReq := connect.NewRequest(&graphv1.ProcessPipelineRequest{
+func (d *HTTPDispatcher) ExecuteApprovedPlan(ctx context.Context, req ExecutePlanRequest) error {
+	connectReq := connect.NewRequest(&graphv1.ExecuteApprovedPlanRequest{
 		JobId:       req.JobID,
 		JobType:     req.JobType,
 		DocumentId:  req.DocumentID,
@@ -79,7 +79,7 @@ func (d *HTTPDispatcher) Dispatch(ctx context.Context, req DispatchRequest) erro
 	if d.token != "" {
 		connectReq.Header().Set("X-Worker-Token", d.token)
 	}
-	res, err := d.client.ProcessPipeline(ctx, connectReq)
+	res, err := d.client.ExecuteApprovedPlan(ctx, connectReq)
 	if err != nil {
 		return err
 	}

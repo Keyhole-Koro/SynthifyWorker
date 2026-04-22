@@ -26,10 +26,24 @@ type Fixture struct {
 type FixtureInput struct {
 	Filename      string                `json:"filename"`
 	RawText       string                `json:"raw_text"`
+	SourceFiles   []FixtureSourceFile   `json:"source_files"`
+	Chunks        []FixtureChunk        `json:"chunks"`
 	Outline       []string              `json:"outline"`
 	DocumentBrief *FixtureDocumentBrief `json:"document_brief"`
 	SectionBriefs []FixtureSectionBrief `json:"section_briefs"`
-	Pass1Results  []FixturePass1Result  `json:"pass1_results"`
+}
+
+type FixtureSourceFile struct {
+	Filename string `json:"filename"`
+	URI      string `json:"uri"`
+	MimeType string `json:"mime_type"`
+	Content  string `json:"content"`
+}
+
+type FixtureChunk struct {
+	ChunkIndex int    `json:"chunk_index"`
+	Heading    string `json:"heading"`
+	Text       string `json:"text"`
 }
 
 type FixtureDocumentBrief struct {
@@ -47,25 +61,14 @@ type FixtureSectionBrief struct {
 	ConnectionHints string   `json:"connection_hints"`
 }
 
-type FixturePass1Result struct {
-	ChunkIndex int              `json:"chunk_index"`
-	Nodes      []FixtureRawNode `json:"nodes"`
-}
-
-type FixtureRawNode struct {
-	LocalID        string   `json:"local_id"`
-	Label          string   `json:"label"`
-	Level          int      `json:"level"`
-	EntityType     string   `json:"entity_type"`
-	Description    string   `json:"description"`
-	SourceChunkIDs []string `json:"source_chunk_ids"`
-}
-
 type FixtureExpected struct {
-	MinNodeCount         int                 `json:"min_node_count"`
-	RequiredLabels       []string            `json:"required_labels"`
-	RequiredHierarchical []FixtureEdgeExpect `json:"required_hierarchical_edges"`
-	RequiredTypedEdges   []FixtureEdgeExpect `json:"required_typed_edges"`
+	MinNodeCount          int                 `json:"min_node_count"`
+	MinChunkCount         int                 `json:"min_chunk_count"`
+	RequiredLabels        []string            `json:"required_labels"`
+	RequiredOutline       []string            `json:"required_outline"`
+	RequiredChunkHeadings []string            `json:"required_chunk_headings"`
+	RequiredHierarchical  []FixtureEdgeExpect `json:"required_hierarchical_edges"`
+	RequiredTypedEdges    []FixtureEdgeExpect `json:"required_typed_edges"`
 }
 
 type FixtureEdgeExpect struct {
@@ -114,24 +117,6 @@ func LoadFixturesForStage(stage pipeline.StageName) ([]Fixture, error) {
 }
 
 func (f Fixture) PipelineContext() *pipeline.PipelineContext {
-	results := make(map[int]pipeline.Pass1ChunkResult, len(f.Input.Pass1Results))
-	for _, result := range f.Input.Pass1Results {
-		nodes := make([]pipeline.RawNode, 0, len(result.Nodes))
-		for _, node := range result.Nodes {
-			nodes = append(nodes, pipeline.RawNode{
-				LocalID:        node.LocalID,
-				Label:          node.Label,
-				Level:          node.Level,
-				EntityType:     node.EntityType,
-				Description:    node.Description,
-				SourceChunkIDs: append([]string(nil), node.SourceChunkIDs...),
-			})
-		}
-		results[result.ChunkIndex] = pipeline.Pass1ChunkResult{
-			ChunkIndex: result.ChunkIndex,
-			Nodes:      nodes,
-		}
-	}
 	var documentBrief *pipeline.DocumentBrief
 	if f.Input.DocumentBrief != nil {
 		documentBrief = &pipeline.DocumentBrief{
@@ -151,12 +136,30 @@ func (f Fixture) PipelineContext() *pipeline.PipelineContext {
 			ConnectionHints: section.ConnectionHints,
 		})
 	}
+	sourceFiles := make([]pipeline.SourceFile, 0, len(f.Input.SourceFiles))
+	for _, source := range f.Input.SourceFiles {
+		sourceFiles = append(sourceFiles, pipeline.SourceFile{
+			Filename: source.Filename,
+			URI:      source.URI,
+			MimeType: source.MimeType,
+			Content:  []byte(source.Content),
+		})
+	}
+	chunks := make([]pipeline.Chunk, 0, len(f.Input.Chunks))
+	for _, chunk := range f.Input.Chunks {
+		chunks = append(chunks, pipeline.Chunk{
+			ChunkIndex: chunk.ChunkIndex,
+			Heading:    chunk.Heading,
+			Text:       chunk.Text,
+		})
+	}
 	return &pipeline.PipelineContext{
 		Filename:      f.Input.Filename,
+		SourceFiles:   sourceFiles,
 		RawText:       f.Input.RawText,
+		Chunks:        chunks,
 		Outline:       append([]string(nil), f.Input.Outline...),
 		DocumentBrief: documentBrief,
 		SectionBriefs: sectionBriefs,
-		Pass1Results:  results,
 	}
 }

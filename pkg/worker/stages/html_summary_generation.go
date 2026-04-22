@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"golang.org/x/sync/errgroup"
 
 	workercontext "github.com/synthify/backend/worker/pkg/worker/context"
@@ -16,7 +17,7 @@ import (
 )
 
 type SummaryRepository interface {
-	UpdateNodeSummaryHTML(nodeID, summaryHTML string) bool
+	UpdateNodeSummaryHTMLWithCapability(capability *domain.JobCapability, jobID, nodeID, summaryHTML string) bool
 }
 
 type HTMLSummaryGenerationStage struct {
@@ -69,7 +70,7 @@ func (s *HTMLSummaryGenerationStage) Run(ctx context.Context, pctx *pipeline.Pip
 				return nil
 			}
 			mu.Lock()
-			s.repo.UpdateNodeSummaryHTML(nodeID, summary)
+			s.repo.UpdateNodeSummaryHTMLWithCapability(pctx.Capability, pctx.JobID, nodeID, summary)
 			mu.Unlock()
 			return groupCtx.Err()
 		})

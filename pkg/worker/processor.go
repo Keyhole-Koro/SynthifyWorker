@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 
 	"github.com/Keyhole-Koro/SynthifyShared/config"
@@ -14,6 +15,7 @@ import (
 )
 
 type documentRepo interface {
+	GetJobCapability(jobID string) (*domain.JobCapability, bool)
 	MarkProcessingJobRunning(jobID string) bool
 	UpdateProcessingJobStage(jobID, stage string) bool
 	FailProcessingJob(jobID, errorMessage string) bool
@@ -23,15 +25,16 @@ type documentRepo interface {
 
 type graphRepo interface {
 	GetWorkspaceRootNodeID(graphID string) (string, bool)
-	CreateStructuredNode(graphID, label string, level int, entityType, description, summaryHTML, createdBy string) *domain.Node
-	CreateEdge(graphID, sourceNodeID, targetNodeID, edgeType, description string) *domain.Edge
+	CreateStructuredNodeWithCapability(capability *domain.JobCapability, jobID, documentID, graphID, label string, level int, description, summaryHTML, createdBy string, sourceChunkIDs []string) *domain.Node
+	CreateEdgeWithCapability(capability *domain.JobCapability, jobID, documentID, graphID, sourceNodeID, targetNodeID, edgeType, description string, sourceChunkIDs []string) *domain.Edge
 	UpsertNodeSource(nodeID, documentID, chunkID, sourceText string, confidence float64) error
 	UpsertEdgeSource(edgeID, documentID, chunkID, sourceText string, confidence float64) error
-	UpdateNodeSummaryHTML(nodeID, summaryHTML string) bool
+	UpdateNodeSummaryHTMLWithCapability(capability *domain.JobCapability, jobID, nodeID, summaryHTML string) bool
 }
 
 type Processor struct {
-	runner *pipeline.PipelineRunner
+	runner  *pipeline.PipelineRunner
+	jobRepo documentRepo
 }
 
 type combinedRepo struct {
@@ -59,14 +62,23 @@ func NewProcessorWithNotifier(jobRepo documentRepo, graphRepo graphRepo, notifie
 		&stages.TextExtractionStage{},
 		stages.NewSemanticChunkingStage(assembler, llmClient),
 		stages.NewBriefGenerationStage(assembler, llmClient),
-		stages.NewPass1ExtractionStage(assembler, llmClient, 5),
-		stages.NewPass2SynthesisStage(assembler, llmClient),
+		stages.NewGoalDrivenSynthesisStage(llmClient),
 		stages.NewPersistenceStage(combinedRepo{documentRepo: jobRepo, graphRepo: graphRepo}),
 		stages.NewHTMLSummaryGenerationStage(graphRepo, assembler, llmClient, 10),
 	)
-	return &Processor{runner: runner}
+	return &Processor{runner: runner, jobRepo: jobRepo}
 }
 
 func (p *Processor) Process(ctx context.Context, pctx *pipeline.PipelineContext) error {
+	if pctx.Capability == nil {
+		if pctx.JobID == "" {
+			return errors.New("job capability is required")
+		}
+		capability, ok := p.jobRepo.GetJobCapability(pctx.JobID)
+		if !ok || capability == nil {
+			return errors.New("job capability not found")
+		}
+		pctx.Capability = capability
+	}
 	return p.runner.Run(ctx, pctx)
 }

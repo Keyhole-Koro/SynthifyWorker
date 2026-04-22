@@ -1,11 +1,14 @@
 package pipeline
 
+import "github.com/Keyhole-Koro/SynthifyShared/domain"
+
 type PipelineContext struct {
 	JobID       string
 	JobType     string
 	DocumentID  string
 	WorkspaceID string
 	GraphID     string
+	Capability  *domain.JobCapability
 
 	FileURI  string
 	Filename string
@@ -21,8 +24,6 @@ type PipelineContext struct {
 	DocumentBrief *DocumentBrief
 	SectionBriefs []SectionBrief
 
-	Pass1Results map[int]Pass1ChunkResult
-
 	SynthesizedNodes []SynthesizedNode
 	SynthesizedEdges []SynthesizedEdge
 
@@ -33,6 +34,7 @@ type SourceFile struct {
 	Filename string
 	URI      string
 	MimeType string
+	Content  []byte
 }
 
 type Chunk struct {
@@ -56,25 +58,10 @@ type SectionBrief struct {
 	ConnectionHints string
 }
 
-type Pass1ChunkResult struct {
-	ChunkIndex int
-	Nodes      []RawNode
-}
-
-type RawNode struct {
-	LocalID        string
-	Label          string
-	Level          int
-	EntityType     string
-	Description    string
-	SourceChunkIDs []string
-}
-
 type SynthesizedNode struct {
 	LocalID        string
 	Label          string
 	Level          int
-	EntityType     string
 	Description    string
 	SummaryHTML    string
 	ParentLocalID  string

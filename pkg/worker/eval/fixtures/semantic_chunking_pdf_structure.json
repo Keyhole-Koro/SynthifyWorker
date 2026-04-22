@@ -1,0 +1,49 @@
+{
+  "id": "semantic_chunking_pdf_structure",
+  "description": "Prefers source file structure when raw text headings are degraded.",
+  "stage": "semantic_chunking",
+  "input": {
+    "filename": "market-map.pdf",
+    "raw_text": "MarketMapOverview TAMSAMSOM details.\nRevenue Table 2024 ARR 12M 18M.\nAcquisition Channels paid search partner referrals.",
+    "source_files": [
+      {
+        "filename": "market-map.pdf",
+        "uri": "https://example.invalid/market-map.pdf",
+        "mime_type": "application/pdf",
+        "content": "%PDF-1.7\nMarket Map\n\n## Market Overview\nTAM / SAM / SOM details.\n\n## Revenue Table\n2024 ARR | 12M | 18M\n\n## Acquisition Channels\nPaid search, partner referrals.\n"
+      }
+    ]
+  },
+  "expected": {
+    "min_chunk_count": 3,
+    "required_outline": [
+      "Market Overview",
+      "Revenue Table",
+      "Acquisition Channels"
+    ],
+    "required_chunk_headings": [
+      "Market Overview",
+      "Revenue Table",
+      "Acquisition Channels"
+    ]
+  },
+  "llm_response": {
+    "chunks": [
+      {
+        "chunk_index": 0,
+        "heading": "Market Overview",
+        "text": "TAM / SAM / SOM details."
+      },
+      {
+        "chunk_index": 1,
+        "heading": "Revenue Table",
+        "text": "2024 ARR | 12M | 18M"
+      },
+      {
+        "chunk_index": 2,
+        "heading": "Acquisition Channels",
+        "text": "Paid search, partner referrals."
+      }
+    ]
+  }
+}

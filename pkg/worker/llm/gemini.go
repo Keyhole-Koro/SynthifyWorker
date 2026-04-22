@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"mime"
 	"net/http"
 	"path"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/Keyhole-Koro/SynthifyShared/config"
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/synthify/backend/worker/pkg/worker/sourcefiles"
 	"google.golang.org/genai"
 )
 
@@ -122,31 +122,12 @@ func (c *GeminiClient) buildContents(ctx context.Context, userPrompt string, sou
 }
 
 func (c *GeminiClient) uploadSourceFile(ctx context.Context, source pipeline.SourceFile) (*genai.File, error) {
-	if strings.TrimSpace(source.URI) == "" {
-		return nil, fmt.Errorf("source file URI is empty")
+	if err := sourcefiles.Fetch(ctx, &source); err != nil {
+		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URI, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build source file request: %w", err)
-	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch source file: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode >= http.StatusBadRequest {
-		return nil, fmt.Errorf("fetch source file: %s", res.Status)
-	}
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read source file: %w", err)
-	}
-
-	mimeType := detectMIMEType(source, res.Header.Get("Content-Type"), body)
-	uploaded, err := c.client.Files.Upload(ctx, bytes.NewReader(body), &genai.UploadFileConfig{
+	mimeType := detectMIMEType(source)
+	uploaded, err := c.client.Files.Upload(ctx, bytes.NewReader(source.Content), &genai.UploadFileConfig{
 		MIMEType:    mimeType,
 		DisplayName: detectDisplayName(source),
 	})
@@ -196,15 +177,15 @@ func (c *GeminiClient) deleteUploadedFile(name string) {
 	_, _ = c.client.Files.Delete(cleanupCtx, name, nil)
 }
 
-func detectMIMEType(source pipeline.SourceFile, headerValue string, body []byte) string {
+func detectMIMEType(source pipeline.SourceFile) string {
 	if mimeType := strings.TrimSpace(source.MimeType); mimeType != "" {
 		return mimeType
 	}
-	if mediaType, _, err := mime.ParseMediaType(headerValue); err == nil && mediaType != "" {
-		return mediaType
+	if extType := mime.TypeByExtension(path.Ext(source.Filename)); extType != "" {
+		return extType
 	}
-	if len(body) > 0 {
-		return http.DetectContentType(body)
+	if len(source.Content) > 0 {
+		return http.DetectContentType(source.Content)
 	}
 	return "application/octet-stream"
 }

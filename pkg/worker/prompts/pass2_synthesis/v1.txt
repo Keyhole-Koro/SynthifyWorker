@@ -1,2 +1,0 @@
-Synthesize chunk-level extraction results into a coherent document graph.
-Preserve evidence from the source chunks, keep the hierarchy compact, and only emit cross-links when the relationship is explicit in the input.

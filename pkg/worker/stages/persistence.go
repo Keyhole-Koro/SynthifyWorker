@@ -12,8 +12,8 @@ import (
 type GraphRepository interface {
 	GetWorkspaceRootNodeID(graphID string) (string, bool)
 	SaveDocumentChunks(documentID string, chunks []*domain.DocumentChunk) error
-	CreateStructuredNode(graphID, label string, level int, entityType, description, summaryHTML, createdBy string) *domain.Node
-	CreateEdge(graphID, sourceNodeID, targetNodeID, edgeType, description string) *domain.Edge
+	CreateStructuredNodeWithCapability(capability *domain.JobCapability, jobID, documentID, graphID, label string, level int, description, summaryHTML, createdBy string, sourceChunkIDs []string) *domain.Node
+	CreateEdgeWithCapability(capability *domain.JobCapability, jobID, documentID, graphID, sourceNodeID, targetNodeID, edgeType, description string, sourceChunkIDs []string) *domain.Edge
 	UpsertNodeSource(nodeID, documentID, chunkID, sourceText string, confidence float64) error
 	UpsertEdgeSource(edgeID, documentID, chunkID, sourceText string, confidence float64) error
 }
@@ -47,14 +47,17 @@ func (s *PersistenceStage) Run(ctx context.Context, pctx *pipeline.PipelineConte
 		return err
 	}
 	for _, node := range pctx.SynthesizedNodes {
-		created := s.repo.CreateStructuredNode(
+		created := s.repo.CreateStructuredNodeWithCapability(
+			pctx.Capability,
+			pctx.JobID,
+			pctx.DocumentID,
 			pctx.GraphID,
 			node.Label,
 			node.Level,
-			node.EntityType,
 			node.Description,
 			node.SummaryHTML,
 			"worker",
+			node.SourceChunkIDs,
 		)
 		if created == nil {
 			return fmt.Errorf("failed to persist node %s", node.LocalID)
@@ -74,7 +77,17 @@ func (s *PersistenceStage) Run(ctx context.Context, pctx *pipeline.PipelineConte
 		if sourceID == "" || targetID == "" {
 			continue
 		}
-		created := s.repo.CreateEdge(pctx.GraphID, sourceID, targetID, edge.EdgeType, edge.Description)
+		created := s.repo.CreateEdgeWithCapability(
+			pctx.Capability,
+			pctx.JobID,
+			pctx.DocumentID,
+			pctx.GraphID,
+			sourceID,
+			targetID,
+			edge.EdgeType,
+			edge.Description,
+			edge.SourceChunkIDs,
+		)
 		if created == nil {
 			return fmt.Errorf("failed to persist edge %s->%s", edge.SourceLocalID, edge.TargetLocalID)
 		}
@@ -88,7 +101,7 @@ func (s *PersistenceStage) Run(ctx context.Context, pctx *pipeline.PipelineConte
 	}
 	if workspaceRootID != "" {
 		if docRootID := pctx.NodeIDMap["doc_root"]; docRootID != "" && docRootID != workspaceRootID {
-			if s.repo.CreateEdge(pctx.GraphID, workspaceRootID, docRootID, "hierarchical", "") == nil {
+			if s.repo.CreateEdgeWithCapability(pctx.Capability, pctx.JobID, pctx.DocumentID, pctx.GraphID, workspaceRootID, docRootID, "hierarchical", "", nil) == nil {
 				return fmt.Errorf("failed to attach document root %s to workspace root", docRootID)
 			}
 		}

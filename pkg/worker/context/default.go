@@ -25,27 +25,6 @@ func (a *DefaultAssembler) ForBriefGeneration(pctx *pipeline.PipelineContext) Co
 	return a.buildBundle(workerprompts.BriefGeneration, strings.Join(pctx.Outline, "\n"), nil, estimateTokens(pctx.RawText))
 }
 
-func (a *DefaultAssembler) ForPass1(pctx *pipeline.PipelineContext, chunkIdx int) ContextBundle {
-	chunkText := ""
-	if chunkIdx >= 0 && chunkIdx < len(pctx.Chunks) {
-		chunkText = pctx.Chunks[chunkIdx].Text
-	}
-	return a.buildBundle(workerprompts.Pass1Extraction, chunkText, pctx.SourceFiles, estimateTokens(chunkText))
-}
-
-func (a *DefaultAssembler) ForPass2Normal(pctx *pipeline.PipelineContext) ContextBundle {
-	userPrompt := strings.Join(pctx.Outline, "\n")
-	return a.buildBundle(workerprompts.Pass2Synthesis, userPrompt, nil, estimateTokens(userPrompt)+len(pctx.SynthesizedNodes)*20)
-}
-
-func (a *DefaultAssembler) ForPass2Lite(pctx *pipeline.PipelineContext, sectionIdx int) ContextBundle {
-	return a.ForPass2Normal(pctx)
-}
-
-func (a *DefaultAssembler) ForPass2Final(pctx *pipeline.PipelineContext) ContextBundle {
-	return a.ForPass2Normal(pctx)
-}
-
 func (a *DefaultAssembler) ForHTMLSummary(pctx *pipeline.PipelineContext, nodeLocalID string) ContextBundle {
 	return a.buildBundle(workerprompts.HTMLSummary, fmt.Sprintf("node=%s", nodeLocalID), nil, 128)
 }
