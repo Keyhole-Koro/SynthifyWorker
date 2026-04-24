@@ -8,6 +8,6 @@ func (p *PipelineContext) JobStatusPayload() jobstatus.Payload {
 		JobType:     p.JobType,
 		DocumentID:  p.DocumentID,
 		WorkspaceID: p.WorkspaceID,
-		GraphID:     p.GraphID,
+		TreeID:      p.TreeID,
 	}
 }

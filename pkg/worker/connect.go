@@ -6,24 +6,83 @@ import (
 	"net/http"
 
 	connect "connectrpc.com/connect"
-	graphv1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/graph/v1"
-	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 )
 
 type ConnectHandler struct {
 	processor interface {
-		Process(ctx context.Context, pctx *pipeline.PipelineContext) error
+		Process(ctx context.Context, jobID, documentID, workspaceID string) error
 	}
-	token string
+	jobRepo interface {
+		GetProcessingJob(jobID string) (*domain.DocumentProcessingJob, bool)
+		GetJobCapability(jobID string) (*domain.JobCapability, bool)
+		GetDocument(id string) (*domain.Document, bool)
+		GetDocumentChunks(documentID string) ([]*domain.DocumentChunk, bool)
+		GetJobPlanningSignals(documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
+		GetTreeByWorkspace(wsID string) ([]*domain.Item, bool)
+		GetJobExecutionPlan(jobID string) (*domain.JobExecutionPlan, bool)
+		UpsertJobExecutionPlan(jobID string, plan *domain.JobExecutionPlan) bool
+		UpsertJobEvaluation(jobID string, result *domain.JobEvaluationResult) bool
+		EvaluateJob(jobID string) (*domain.JobEvaluationResult, bool)
+	}
+	planner   *Planner
+	evaluator *JobEvaluator
+	token     string
 }
 
 func NewConnectHandler(processor interface {
-	Process(ctx context.Context, pctx *pipeline.PipelineContext) error
-}, token string) *ConnectHandler {
-	return &ConnectHandler{processor: processor, token: token}
+	Process(ctx context.Context, jobID, documentID, workspaceID string) error
+}, jobRepo interface {
+	GetProcessingJob(jobID string) (*domain.DocumentProcessingJob, bool)
+	GetJobCapability(jobID string) (*domain.JobCapability, bool)
+	GetDocument(id string) (*domain.Document, bool)
+	GetDocumentChunks(documentID string) ([]*domain.DocumentChunk, bool)
+	GetJobPlanningSignals(documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
+	GetTreeByWorkspace(wsID string) ([]*domain.Item, bool)
+	GetJobExecutionPlan(jobID string) (*domain.JobExecutionPlan, bool)
+	UpsertJobExecutionPlan(jobID string, plan *domain.JobExecutionPlan) bool
+	UpsertJobEvaluation(jobID string, result *domain.JobEvaluationResult) bool
+	EvaluateJob(jobID string) (*domain.JobEvaluationResult, bool)
+}, planner *Planner, evaluator *JobEvaluator, token string) *ConnectHandler {
+	return &ConnectHandler{
+		processor: processor,
+		jobRepo:   jobRepo,
+		planner:   planner,
+		evaluator: evaluator,
+		token:     token,
+	}
 }
 
-func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.Request[graphv1.ExecuteApprovedPlanRequest]) (*connect.Response[graphv1.ExecuteApprovedPlanResponse], error) {
+func (h *ConnectHandler) GenerateExecutionPlan(ctx context.Context, req *connect.Request[treev1.GenerateExecutionPlanRequest]) (*connect.Response[treev1.GenerateExecutionPlanResponse], error) {
+	if h.token != "" && req.Header().Get("X-Worker-Token") != h.token {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("forbidden"))
+	}
+	if req.Msg.GetJobId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))
+	}
+	plan, err := h.planner.GenerateExecutionPlan(ctx, ExecutePlanRequest{
+		JobID:       req.Msg.GetJobId(),
+		JobType:     req.Msg.GetJobType(),
+		DocumentID:  req.Msg.GetDocumentId(),
+		WorkspaceID: req.Msg.GetWorkspaceId(),
+		TreeID:      req.Msg.GetTreeId(),
+		Filename:    req.Msg.GetFilename(),
+		MimeType:    req.Msg.GetMimeType(),
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	return connect.NewResponse(&treev1.GenerateExecutionPlanResponse{
+		PlanId:   plan.PlanID,
+		JobId:    plan.JobID,
+		Status:   plan.Status,
+		Summary:  plan.Summary,
+		PlanJson: plan.PlanJSON,
+	}), nil
+}
+
+func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.Request[treev1.ExecuteApprovedPlanRequest]) (*connect.Response[treev1.ExecuteApprovedPlanResponse], error) {
 	if h.token != "" && req.Header().Get("X-Worker-Token") != h.token {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("forbidden"))
 	}
@@ -32,7 +91,7 @@ func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.R
 		JobType:     req.Msg.GetJobType(),
 		DocumentID:  req.Msg.GetDocumentId(),
 		WorkspaceID: req.Msg.GetWorkspaceId(),
-		GraphID:     req.Msg.GetGraphId(),
+		TreeID:      req.Msg.GetTreeId(),
 		FileURI:     req.Msg.GetFileUri(),
 		Filename:    req.Msg.GetFilename(),
 		MimeType:    req.Msg.GetMimeType(),
@@ -40,19 +99,51 @@ func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.R
 	if err := validateExecutePlanRequest(dispatchReq); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := h.processor.Process(ctx, &pipeline.PipelineContext{
-		JobID:       dispatchReq.JobID,
-		JobType:     dispatchReq.JobType,
-		DocumentID:  dispatchReq.DocumentID,
-		WorkspaceID: dispatchReq.WorkspaceID,
-		GraphID:     dispatchReq.GraphID,
-		FileURI:     dispatchReq.FileURI,
-		Filename:    dispatchReq.Filename,
-		MimeType:    dispatchReq.MimeType,
-	}); err != nil {
+	if err := h.processor.Process(ctx,
+		dispatchReq.JobID,
+		dispatchReq.DocumentID,
+		dispatchReq.WorkspaceID,
+	); err != nil {
+		if errors.Is(err, ErrApprovalRequired) || errors.Is(err, ErrPlanRejected) {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&graphv1.ExecuteApprovedPlanResponse{Status: "ok"}), nil
+	return connect.NewResponse(&treev1.ExecuteApprovedPlanResponse{Status: "ok"}), nil
+}
+
+func (h *ConnectHandler) EvaluateJobArtifact(ctx context.Context, req *connect.Request[treev1.EvaluateJobArtifactRequest]) (*connect.Response[treev1.EvaluateJobArtifactResponse], error) {
+	if h.token != "" && req.Header().Get("X-Worker-Token") != h.token {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("forbidden"))
+	}
+	if req.Msg.GetJobId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))
+	}
+
+	var result *domain.JobEvaluationResult
+
+	if h.evaluator != nil {
+		var err error
+		result, err = h.evaluator.Evaluate(ctx, req.Msg.GetJobId())
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+	} else {
+		var ok bool
+		result, ok = h.jobRepo.EvaluateJob(req.Msg.GetJobId())
+		if !ok || result == nil {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("evaluation result not found"))
+		}
+	}
+
+	return connect.NewResponse(&treev1.EvaluateJobArtifactResponse{
+		Passed:        result.Passed,
+		Status:        result.Status,
+		Summary:       result.Summary,
+		Score:         result.Score,
+		Findings:      append([]string(nil), result.Findings...),
+		MutationCount: result.MutationCount,
+	}), nil
 }
 
 func RequireWorkerToken(token string, next http.Handler) http.Handler {
