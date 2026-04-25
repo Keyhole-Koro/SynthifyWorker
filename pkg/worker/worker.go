@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/synthify/backend/worker/pkg/worker/agents"
 	"github.com/synthify/backend/worker/pkg/worker/tools"
@@ -34,7 +35,7 @@ type Repository interface {
 	UpsertJobExecutionPlan(jobID string, plan *domain.JobExecutionPlan) bool
 	UpsertJobEvaluation(jobID string, result *domain.JobEvaluationResult) bool
 	EvaluateJob(jobID string) (*domain.JobEvaluationResult, bool)
-	CreateProcessingJob(docID, workspaceID, jobType string) *domain.DocumentProcessingJob
+	CreateProcessingJob(docID, workspaceID string, jobType treev1.JobType) *domain.DocumentProcessingJob
 	MarkProcessingJobRunning(jobID string) bool
 	UpdateProcessingJobStage(jobID, stage string) bool
 	FailProcessingJob(jobID, errorMessage string) bool
@@ -117,7 +118,7 @@ func (w *Worker) Process(ctx context.Context, jobID, documentID, workspaceID str
 		JobID:       jobID,
 		DocumentID:  documentID,
 		WorkspaceID: workspaceID,
-		JobType:     string(job.JobType),
+		JobType:     job.JobType.String(),
 	}
 
 	if w.status != nil {

@@ -12,7 +12,6 @@ import (
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/Keyhole-Koro/SynthifyShared/middleware"
 	"github.com/synthify/backend/worker/pkg/worker"
-	"github.com/synthify/backend/worker/pkg/worker/llm"
 	"google.golang.org/adk/model"
 )
 
