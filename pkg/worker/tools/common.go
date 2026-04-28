@@ -25,3 +25,8 @@ type ToolContext struct {
 	tool.Context
 	Base *BaseContext
 }
+
+type GlossaryEntry struct {
+	Term       string `json:"term"`
+	Definition string `json:"definition"`
+}

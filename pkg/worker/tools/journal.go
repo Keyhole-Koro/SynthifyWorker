@@ -38,6 +38,9 @@ type JournalResult struct {
 	Message string `json:"message"`
 }
 
+// NewJournalTool manages an in-memory per-job checklist used by the orchestrator.
+// Input schema: JournalArgs{job_id: string, action: string, task_id?: string, description?: string, status?: string, depends_on?: []string}.
+// Output schema: JournalResult{tasks?: []Task, message: string}.
 func NewJournalTool() (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "manage_job_checklist",

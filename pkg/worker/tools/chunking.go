@@ -16,6 +16,9 @@ type ChunkingResult struct {
 	Outline []string         `json:"outline"`
 }
 
+// NewChunkingTool splits raw document text into coarse semantic chunks.
+// Input schema: ChunkingArgs{document_id: string, raw_text: string}.
+// Output schema: ChunkingResult{chunks: []pipeline.Chunk, outline: []string}.
 func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "semantic_chunking",

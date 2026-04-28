@@ -20,6 +20,9 @@ type PersistenceResult struct {
 	Message string `json:"message"`
 }
 
+// NewPersistenceTool writes synthesized items into the backing repository.
+// Input schema: PersistenceArgs{job_id: string, document_id: string, workspace_id: string, items: []pipeline.SynthesizedItem}.
+// Output schema: PersistenceResult{success: bool, message: string}.
 func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "persist_knowledge_tree",

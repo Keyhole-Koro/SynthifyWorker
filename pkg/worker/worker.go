@@ -45,6 +45,9 @@ type Repository interface {
 	CreateStructuredItemWithCapability(capability *domain.JobCapability, jobID, documentID, workspaceID, label string, level int, description, summaryHTML, createdBy, parentID string, sourceChunkIDs []string) *domain.Item
 	UpsertItemSource(itemID, documentID, chunkID, sourceText string, confidence float64) error
 	UpdateItemSummaryHTMLWithCapability(capability *domain.JobCapability, jobID, itemID, summaryHTML string) bool
+
+	SearchRelatedChunks(ctx context.Context, workspaceID, query string, limit int) ([]*domain.DocumentChunk, error)
+	LogToolCall(ctx context.Context, jobID, toolName, inputJSON, outputJSON string, durationMs int64) error
 }
 
 type Worker struct {
@@ -84,7 +87,7 @@ func NewWorker(repo Repository, m model.LLM) (*Worker, error) {
 
 func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM) (*Worker, error) {
 	base := &tools.BaseContext{Repo: treeRepo}
-	orch, err := agents.NewOrchestrator(m, base)
+	orch, err := agents.NewOrchestrator(m, base, repo)
 	if err != nil {
 		return nil, err
 	}
