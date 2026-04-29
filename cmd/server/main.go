@@ -12,7 +12,10 @@ import (
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/Keyhole-Koro/SynthifyShared/middleware"
 	"github.com/synthify/backend/worker/pkg/worker"
+	"github.com/synthify/backend/worker/pkg/worker/llm"
 	"google.golang.org/adk/model"
+	"google.golang.org/adk/model/gemini"
+	"google.golang.org/genai"
 )
 
 func main() {
@@ -21,12 +24,25 @@ func main() {
 
 	store := app.InitStore(ctx, app.PublicUploadURLGenerator(cfg.GCSUploadURLBase))
 	notifier := jobstatus.NewNotifier(ctx, cfg.FirebaseProjectID)
-	
-	// Initialize ADK model (wrapper for Gemini)
-	// In a real scenario, this would use model.NewGoogleModel
-	var adkModel model.LLM 
 
-	workerService, err := worker.NewWorkerWithNotifier(store, store, notifier, adkModel)
+	var adkModel model.LLM
+	var embedder *llm.GeminiClient
+	llmCfg := config.LoadLLM()
+	if llmCfg.Enabled() {
+		var err error
+		adkModel, err = gemini.NewModel(ctx, llmCfg.GeminiModel, &genai.ClientConfig{
+			APIKey:  llmCfg.GeminiAPIKey,
+			Backend: genai.BackendGeminiAPI,
+		})
+		if err != nil {
+			log.Printf("Gemini model disabled: %v", err)
+		}
+		embedder = llm.NewGeminiClient(llmCfg)
+	} else {
+		log.Printf("Gemini API key not configured; worker will use deterministic fallback processing")
+	}
+
+	workerService, err := worker.NewWorkerWithNotifier(store, store, notifier, adkModel, embedder)
 	if err != nil {
 		log.Fatal(err)
 	}

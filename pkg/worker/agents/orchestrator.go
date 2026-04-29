@@ -50,7 +50,7 @@ func NewOrchestrator(m model.LLM, base *tools.BaseContext, repo any) (*Orchestra
 	if err != nil {
 		return nil, err
 	}
-	search, err := tools.NewSearchTool()
+	search, err := tools.NewSearchTool(base)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func NewOrchestrator(m model.LLM, base *tools.BaseContext, repo any) (*Orchestra
 	}
 
 	a, err := llmagent.New(llmagent.Config{
-		Name: "orchestrator",
+		Name:  "orchestrator",
 		Model: m,
 		Instruction: `You are the Lead Knowledge Architect for Synthify.
 Your mission is to build a flawless knowledge tree from raw document data.
@@ -128,6 +128,13 @@ You are self-correcting and possess a 'Working Memory'. Always lookup specialize
 	}
 
 	return &Orchestrator{agent: a}, nil
+}
+
+func (o *Orchestrator) Agent() agent.Agent {
+	if o == nil {
+		return nil
+	}
+	return o.agent
 }
 
 func (o *Orchestrator) ProcessDocument(ctx context.Context, jobID, documentID, rawText string) (string, error) {

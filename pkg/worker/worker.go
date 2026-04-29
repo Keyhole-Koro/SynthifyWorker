@@ -2,18 +2,31 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
+	"regexp"
+	"strings"
 
+	connect "connectrpc.com/connect"
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
+	treev1connect "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1/treev1connect"
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/synthify/backend/worker/pkg/worker/agents"
+	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/synthify/backend/worker/pkg/worker/sourcefiles"
 	"github.com/synthify/backend/worker/pkg/worker/tools"
+	"google.golang.org/adk/agent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/runner"
+	"google.golang.org/adk/session"
+	"google.golang.org/genai"
 )
+
+var workerNumberedHeadingPattern = regexp.MustCompile(`^\s*(\d+(?:\.\d+)*)[\.\):]?\s+`)
 
 var (
 	ErrApprovalRequired = errors.New("job execution plan requires approval")
@@ -47,6 +60,7 @@ type Repository interface {
 	UpdateItemSummaryHTMLWithCapability(capability *domain.JobCapability, jobID, itemID, summaryHTML string) bool
 
 	SearchRelatedChunks(ctx context.Context, workspaceID, query string, limit int) ([]*domain.DocumentChunk, error)
+	SearchRelatedChunksByVector(ctx context.Context, workspaceID string, embedding []float32, limit int) ([]*domain.DocumentChunk, error)
 	LogToolCall(ctx context.Context, jobID, toolName, inputJSON, outputJSON string, durationMs int64) error
 }
 
@@ -82,17 +96,22 @@ func validateExecutePlanRequest(req ExecutePlanRequest) error {
 }
 
 func NewWorker(repo Repository, m model.LLM) (*Worker, error) {
-	return NewWorkerWithNotifier(repo, repo, nil, m)
+	return NewWorkerWithNotifier(repo, repo, nil, m, nil)
 }
 
-func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM) (*Worker, error) {
-	base := &tools.BaseContext{Repo: treeRepo}
+func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM, embedder tools.Embedder) (*Worker, error) {
+	base := &tools.BaseContext{Repo: treeRepo, Embedder: embedder}
 	orch, err := agents.NewOrchestrator(m, base, repo)
 	if err != nil {
 		return nil, err
 	}
 
-	r, err := runner.New(runner.Config{})
+	r, err := runner.New(runner.Config{
+		AppName:           "synthify-worker",
+		Agent:             orch.Agent(),
+		SessionService:    session.InMemoryService(),
+		AutoCreateSession: true,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -105,45 +124,177 @@ func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobsta
 	}, nil
 }
 
-func (w *Worker) Process(ctx context.Context, jobID, documentID, workspaceID string) error {
-	log.Printf("Agent-based processing for job %s (doc: %s)", jobID, documentID)
+func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
+	if err := validateExecutePlanRequest(req); err != nil {
+		return err
+	}
+	log.Printf("LLM worker processing job %s (doc: %s)", req.JobID, req.DocumentID)
 
-	job, ok := w.repo.GetProcessingJob(jobID)
+	job, ok := w.repo.GetProcessingJob(req.JobID)
 	if !ok {
-		return fmt.Errorf("job %s not found", jobID)
+		return fmt.Errorf("job %s not found", req.JobID)
 	}
 
-	if _, ok := w.repo.GetDocument(documentID); !ok {
-		return fmt.Errorf("document %s not found", documentID)
+	if _, ok := w.repo.GetDocument(req.DocumentID); !ok {
+		return fmt.Errorf("document %s not found", req.DocumentID)
 	}
 
 	payload := jobstatus.Payload{
-		JobID:       jobID,
-		DocumentID:  documentID,
-		WorkspaceID: workspaceID,
+		JobID:       req.JobID,
+		DocumentID:  req.DocumentID,
+		WorkspaceID: req.WorkspaceID,
+		TreeID:      req.TreeID,
 		JobType:     job.JobType.String(),
 	}
 
+	w.repo.MarkProcessingJobRunning(req.JobID)
 	if w.status != nil {
 		w.status.Running(ctx, payload)
 	}
 
-	_, err := w.orchestrator.ProcessDocument(ctx, jobID, documentID, "Extracted text content here...")
-	if err != nil {
+	if err := w.processDocument(ctx, req, payload); err != nil {
 		log.Printf("Agent execution failed: %v", err)
-		w.repo.FailProcessingJob(jobID, err.Error())
+		w.repo.FailProcessingJob(req.JobID, err.Error())
 		if w.status != nil {
 			w.status.Failed(ctx, payload, err.Error())
 		}
 		return err
 	}
 
-	log.Printf("Agent-based job %s completed successfully", jobID)
-	w.repo.CompleteProcessingJob(jobID)
+	log.Printf("LLM worker job %s completed successfully", req.JobID)
+	w.repo.CompleteProcessingJob(req.JobID)
 	if w.status != nil {
 		w.status.Completed(ctx, payload)
 	}
 
+	return nil
+}
+
+func (w *Worker) processDocument(ctx context.Context, req ExecutePlanRequest, payload jobstatus.Payload) error {
+	if w.status != nil {
+		w.status.StageProgress(ctx, payload, string(pipeline.StageTextExtraction), 10, "Reading source document")
+	}
+	w.repo.UpdateProcessingJobStage(req.JobID, string(pipeline.StageTextExtraction))
+	rawText, err := w.loadRawText(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if w.status != nil {
+		w.status.StageProgress(ctx, payload, string(pipeline.StageSemanticChunking), 35, "Chunking document")
+	}
+	w.repo.UpdateProcessingJobStage(req.JobID, string(pipeline.StageSemanticChunking))
+	chunks := buildChunks(req.DocumentID, rawText)
+	if len(chunks) == 0 {
+		return fmt.Errorf("document produced no chunks")
+	}
+	if err := w.repo.SaveDocumentChunks(req.DocumentID, chunks); err != nil {
+		return err
+	}
+
+	if w.status != nil {
+		w.status.StageProgress(ctx, payload, string(pipeline.StageGoalDrivenSynthesis), 65, "Synthesizing knowledge items")
+	}
+	w.repo.UpdateProcessingJobStage(req.JobID, string(pipeline.StageGoalDrivenSynthesis))
+	items := synthesizeItems(req.DocumentID, chunks)
+	if len(items) == 0 {
+		return fmt.Errorf("no items synthesized")
+	}
+
+	_ = w.runAgentBestEffort(ctx, req, rawText)
+
+	if w.status != nil {
+		w.status.StageProgress(ctx, payload, string(pipeline.StagePersistence), 90, "Saving generated knowledge")
+	}
+	w.repo.UpdateProcessingJobStage(req.JobID, string(pipeline.StagePersistence))
+	return w.persistItems(ctx, req, items, chunks)
+}
+
+func (w *Worker) loadRawText(ctx context.Context, req ExecutePlanRequest) (string, error) {
+	if req.FileURI != "" {
+		source := pipeline.SourceFile{Filename: req.Filename, URI: req.FileURI, MimeType: req.MimeType}
+		if err := sourcefiles.Fetch(ctx, &source); err != nil {
+			return "", err
+		}
+		text := strings.TrimSpace(strings.ReplaceAll(string(source.Content), "\x00", ""))
+		if text != "" {
+			return text, nil
+		}
+	}
+	if chunks, ok := w.repo.GetDocumentChunks(req.DocumentID); ok && len(chunks) > 0 {
+		var b strings.Builder
+		for _, chunk := range chunks {
+			if chunk.Heading != "" {
+				b.WriteString(chunk.Heading)
+				b.WriteByte('\n')
+			}
+			b.WriteString(chunk.Text)
+			b.WriteString("\n\n")
+		}
+		return strings.TrimSpace(b.String()), nil
+	}
+	return "", fmt.Errorf("no source text available for document %s", req.DocumentID)
+}
+
+func (w *Worker) runAgentBestEffort(ctx context.Context, req ExecutePlanRequest, rawText string) error {
+	if w.runner == nil {
+		return nil
+	}
+	message := fmt.Sprintf("Review job_id=%s document_id=%s workspace_id=%s for processing context only. Do not call tools or persist data; the deterministic worker pipeline will perform mutations. Source text:\n%s", req.JobID, req.DocumentID, req.WorkspaceID, truncateRunes(rawText, 12000))
+	sessionID := req.JobID
+	for _, err := range w.runner.Run(ctx, "worker", sessionID, genai.NewContentFromText(message, genai.RoleUser), agent.RunConfig{}) {
+		if err != nil {
+			log.Printf("ADK agent run skipped/failed for job %s: %v", req.JobID, err)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (w *Worker) persistItems(ctx context.Context, req ExecutePlanRequest, items []pipeline.SynthesizedItem, chunks []*domain.DocumentChunk) error {
+	capability, ok := w.repo.GetJobCapability(req.JobID)
+	if !ok || capability == nil {
+		return fmt.Errorf("job capability not found: %s", req.JobID)
+	}
+	rootID, _ := w.repo.GetWorkspaceRootItemID(req.WorkspaceID)
+	chunkByID := make(map[string]*domain.DocumentChunk, len(chunks))
+	for _, chunk := range chunks {
+		chunkByID[chunk.ChunkID] = chunk
+	}
+	itemIDs := make(map[string]string, len(items))
+	for _, item := range items {
+		parentID := rootID
+		if item.ParentLocalID != "" {
+			parentID = firstNonEmpty(itemIDs[item.ParentLocalID], rootID)
+		}
+		created := w.repo.CreateStructuredItemWithCapability(
+			capability,
+			req.JobID,
+			req.DocumentID,
+			req.WorkspaceID,
+			item.Label,
+			item.Level,
+			item.Description,
+			item.SummaryHTML,
+			"llm_worker",
+			parentID,
+			item.SourceChunkIDs,
+		)
+		if created == nil {
+			return fmt.Errorf("failed to create item %q", item.Label)
+		}
+		itemIDs[item.LocalID] = created.ItemID
+		for _, chunkID := range item.SourceChunkIDs {
+			sourceText := item.Description
+			if chunk := chunkByID[chunkID]; chunk != nil {
+				sourceText = truncateRunes(chunk.Text, 1000)
+			}
+			if err := w.repo.UpsertItemSource(created.ItemID, req.DocumentID, chunkID, sourceText, 0.75); err != nil {
+				return err
+			}
+		}
+		_ = w.repo.LogToolCall(ctx, req.JobID, "persist_knowledge_tree", mustJSON(map[string]any{"item": item.Label}), mustJSON(created), 0)
+	}
 	return nil
 }
 
@@ -157,8 +308,38 @@ func NewPlanner(repo Repository, llm model.LLM) *Planner {
 }
 
 func (p *Planner) GenerateExecutionPlan(ctx context.Context, req ExecutePlanRequest) (*domain.JobExecutionPlan, error) {
-	// Dummy implementation for now to pass linter
-	return &domain.JobExecutionPlan{PlanID: "dummy", JobID: req.JobID}, nil
+	if err := validateExecutePlanRequest(req); err != nil {
+		return nil, err
+	}
+	if _, ok := p.repo.GetDocument(req.DocumentID); !ok {
+		return nil, fmt.Errorf("document %s not found", req.DocumentID)
+	}
+	signals, _ := p.repo.GetJobPlanningSignals(req.DocumentID, req.WorkspaceID, req.TreeID)
+	payload := map[string]any{
+		"steps": []map[string]any{
+			{"name": "text_extraction", "operation": treev1.JobOperation_JOB_OPERATION_READ_DOCUMENT.String(), "risk_tier": "tier_0"},
+			{"name": "semantic_chunking", "operation": treev1.JobOperation_JOB_OPERATION_INVOKE_LLM.String(), "risk_tier": "tier_0"},
+			{"name": "goal_driven_synthesis", "operation": treev1.JobOperation_JOB_OPERATION_CREATE_ITEM.String(), "risk_tier": "tier_1"},
+			{"name": "persistence", "operation": treev1.JobOperation_JOB_OPERATION_CREATE_ITEM.String(), "risk_tier": "tier_1"},
+			{"name": "evaluation", "operation": treev1.JobOperation_JOB_OPERATION_EMIT_EVAL.String(), "risk_tier": "tier_0"},
+		},
+		"document_id":  req.DocumentID,
+		"workspace_id": req.WorkspaceID,
+		"tree_id":      req.TreeID,
+		"signals":      signals,
+	}
+	plan := &domain.JobExecutionPlan{
+		PlanID:    "plan_" + req.JobID,
+		JobID:     req.JobID,
+		Status:    "approved",
+		Summary:   "Extract text, chunk semantically, synthesize knowledge tree items, persist mutations, and evaluate the job.",
+		PlanJSON:  mustJSON(payload),
+		CreatedBy: "llm_worker",
+	}
+	if !p.repo.UpsertJobExecutionPlan(req.JobID, plan) {
+		return nil, fmt.Errorf("failed to upsert execution plan")
+	}
+	return plan, nil
 }
 
 type JobEvaluator struct {
@@ -172,7 +353,19 @@ func NewJobEvaluator(repo Repository, m model.LLM) *JobEvaluator {
 }
 
 func (e *JobEvaluator) Evaluate(ctx context.Context, jobID string) (*domain.JobEvaluationResult, error) {
-	return &domain.JobEvaluationResult{JobID: jobID, Status: "completed"}, nil
+	result, ok := e.repo.EvaluateJob(jobID)
+	if !ok || result == nil {
+		return nil, fmt.Errorf("evaluation result not found for job %s", jobID)
+	}
+	if result.Status == "" {
+		if result.Passed {
+			result.Status = "passed"
+		} else {
+			result.Status = "failed"
+		}
+	}
+	e.repo.UpsertJobEvaluation(jobID, result)
+	return result, nil
 }
 
 type HTTPDispatcher struct {
@@ -185,11 +378,137 @@ func NewHTTPDispatcher(baseURL, token string) *HTTPDispatcher {
 }
 
 func (d *HTTPDispatcher) GenerateExecutionPlan(ctx context.Context, req ExecutePlanRequest) error {
-	// Simple HTTP client implementation for now
-	return nil
+	client := treev1connect.NewWorkerServiceClient(http.DefaultClient, strings.TrimRight(d.baseURL, "/"))
+	rpcReq := connect.NewRequest(&treev1.GenerateExecutionPlanRequest{
+		JobId:       req.JobID,
+		JobType:     req.JobType,
+		DocumentId:  req.DocumentID,
+		WorkspaceId: req.WorkspaceID,
+		TreeId:      req.TreeID,
+		Filename:    req.Filename,
+		MimeType:    req.MimeType,
+	})
+	if d.token != "" {
+		rpcReq.Header().Set("X-Worker-Token", d.token)
+	}
+	_, err := client.GenerateExecutionPlan(ctx, rpcReq)
+	return err
 }
 
 func (d *HTTPDispatcher) ExecuteApprovedPlan(ctx context.Context, req ExecutePlanRequest) error {
-	// Simple HTTP client implementation for now
-	return nil
+	client := treev1connect.NewWorkerServiceClient(http.DefaultClient, strings.TrimRight(d.baseURL, "/"))
+	rpcReq := connect.NewRequest(&treev1.ExecuteApprovedPlanRequest{
+		JobId:       req.JobID,
+		JobType:     req.JobType,
+		DocumentId:  req.DocumentID,
+		WorkspaceId: req.WorkspaceID,
+		TreeId:      req.TreeID,
+		FileUri:     req.FileURI,
+		Filename:    req.Filename,
+		MimeType:    req.MimeType,
+	})
+	if d.token != "" {
+		rpcReq.Header().Set("X-Worker-Token", d.token)
+	}
+	_, err := client.ExecuteApprovedPlan(ctx, rpcReq)
+	if err != nil && connect.CodeOf(err) == connect.CodeFailedPrecondition {
+		return ErrApprovalRequired
+	}
+	return err
+}
+
+func buildChunks(documentID, rawText string) []*domain.DocumentChunk {
+	const maxRunes = 3500
+	text := strings.TrimSpace(rawText)
+	if text == "" {
+		return nil
+	}
+	var chunks []*domain.DocumentChunk
+	var b strings.Builder
+	heading := "Introduction"
+	flush := func() {
+		body := strings.TrimSpace(b.String())
+		if body == "" {
+			return
+		}
+		index := len(chunks)
+		chunks = append(chunks, &domain.DocumentChunk{
+			ChunkID:    fmt.Sprintf("%s_chunk_%d", documentID, index),
+			DocumentID: documentID,
+			Heading:    heading,
+			Text:       body,
+		})
+		b.Reset()
+	}
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if isHeadingLine(trimmed) && b.Len() > 0 {
+			flush()
+			heading = strings.Trim(strings.TrimSpace(trimmed), "#: ")
+		}
+		if b.Len()+len(line) > maxRunes {
+			flush()
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	flush()
+	return chunks
+}
+
+func synthesizeItems(documentID string, chunks []*domain.DocumentChunk) []pipeline.SynthesizedItem {
+	items := make([]pipeline.SynthesizedItem, 0, len(chunks))
+	for i, chunk := range chunks {
+		label := strings.TrimSpace(chunk.Heading)
+		if label == "" {
+			label = fmt.Sprintf("Section %d", i+1)
+		}
+		description := truncateRunes(strings.Join(strings.Fields(chunk.Text), " "), 360)
+		items = append(items, pipeline.SynthesizedItem{
+			LocalID:        fmt.Sprintf("chunk_%d", i),
+			Label:          label,
+			Level:          1,
+			Description:    description,
+			SummaryHTML:    "<p>" + htmlEscapeLocal(description) + "</p>",
+			SourceChunkIDs: []string{fmt.Sprintf("%s_chunk_%d", documentID, i)},
+		})
+	}
+	return items
+}
+
+func isHeadingLine(line string) bool {
+	if line == "" || len([]rune(line)) > 120 {
+		return false
+	}
+	return strings.HasPrefix(line, "#") || workerNumberedHeadingPattern.MatchString(line) || (strings.HasSuffix(line, ":") && len(strings.Fields(line)) <= 8)
+}
+
+func truncateRunes(text string, max int) string {
+	runes := []rune(strings.TrimSpace(text))
+	if max <= 0 || len(runes) <= max {
+		return string(runes)
+	}
+	return string(runes[:max]) + "..."
+}
+
+func mustJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func htmlEscapeLocal(text string) string {
+	replacer := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;", "'", "&#39;")
+	return replacer.Replace(text)
 }

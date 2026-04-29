@@ -19,7 +19,9 @@ func NewMergeTool() (tool.Tool, error) {
 		Name:        "deduplicate_and_merge",
 		Description: "Merges multiple items into a single canonical item to reduce redundancy in the knowledge tree.",
 	}, func(ctx tool.Context, args MergeArgs) (MergeResult, error) {
-		// Stub: actual merging logic
-		return MergeResult{Message: "Items merged successfully"}, nil
+		if len(args.ItemIDs) == 0 {
+			return MergeResult{Message: "No items provided"}, nil
+		}
+		return MergeResult{MergedID: args.ItemIDs[0], Message: "Selected canonical item for duplicate group"}, nil
 	})
 }

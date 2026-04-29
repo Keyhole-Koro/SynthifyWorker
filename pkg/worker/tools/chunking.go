@@ -1,6 +1,11 @@
 package tools
 
 import (
+	"fmt"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
@@ -24,20 +29,93 @@ func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 		Name:        "semantic_chunking",
 		Description: "Splits raw document text into semantically coherent chunks and generates an outline.",
 	}, func(ctx tool.Context, args ChunkingArgs) (ChunkingResult, error) {
-		// In a real implementation, this would call the LLM or a specialized chunking logic.
-		// For now, we adapt the existing Stage logic.
+		text := strings.TrimSpace(args.RawText)
+		if text == "" {
+			return ChunkingResult{}, nil
+		}
 
-		// Note: Since this is a tool, we might want to perform the LLM call inside here
-		// if the tool is meant to be 'intelligent', or just perform the logic.
-
-		// For ADK migration, we'll assume the Orchestrator might call this
-		// with instructions.
-
-		return ChunkingResult{
-			Chunks: []pipeline.Chunk{
-				{ChunkIndex: 0, Heading: "Introduction", Text: args.RawText},
-			},
-			Outline: []string{"Introduction"},
-		}, nil
+		sections := splitSections(text)
+		chunks := make([]pipeline.Chunk, 0, len(sections))
+		outline := make([]string, 0, len(sections))
+		for i, section := range sections {
+			heading := section.heading
+			if heading == "" {
+				heading = fmt.Sprintf("Section %d", i+1)
+			}
+			chunks = append(chunks, pipeline.Chunk{ChunkIndex: i, Heading: heading, Text: section.text})
+			outline = append(outline, heading)
+		}
+		if base != nil && base.Repo != nil {
+			domainChunks := make([]*domain.DocumentChunk, 0, len(chunks))
+			for _, chunk := range chunks {
+				domainChunks = append(domainChunks, &domain.DocumentChunk{
+					ChunkID:    fmt.Sprintf("%s_chunk_%d", args.DocumentID, chunk.ChunkIndex),
+					DocumentID: args.DocumentID,
+					Heading:    chunk.Heading,
+					Text:       chunk.Text,
+				})
+			}
+			_ = base.Repo.SaveDocumentChunks(args.DocumentID, domainChunks)
+		}
+		return ChunkingResult{Chunks: chunks, Outline: outline}, nil
 	})
+}
+
+type textSection struct {
+	heading string
+	text    string
+}
+
+func splitSections(text string) []textSection {
+	const maxRunes = 3500
+	var sections []textSection
+	var currentHeading string
+	var current strings.Builder
+
+	flush := func() {
+		body := strings.TrimSpace(current.String())
+		if body == "" {
+			return
+		}
+		sections = append(sections, textSection{heading: currentHeading, text: body})
+		current.Reset()
+	}
+
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if looksLikeHeading(trimmed) && current.Len() > 0 {
+			flush()
+			currentHeading = normalizeHeading(trimmed)
+		}
+		if currentHeading == "" && looksLikeHeading(trimmed) {
+			currentHeading = normalizeHeading(trimmed)
+		}
+		if utf8.RuneCountInString(current.String())+utf8.RuneCountInString(line) > maxRunes {
+			flush()
+		}
+		current.WriteString(line)
+		current.WriteByte('\n')
+	}
+	flush()
+	if len(sections) == 0 {
+		sections = append(sections, textSection{heading: "Introduction", text: text})
+	}
+	return sections
+}
+
+func looksLikeHeading(line string) bool {
+	if line == "" || len([]rune(line)) > 120 {
+		return false
+	}
+	if strings.HasPrefix(line, "#") {
+		return true
+	}
+	if numberedHeadingPattern.MatchString(line) {
+		return true
+	}
+	return strings.HasSuffix(line, ":") && len(strings.Fields(line)) <= 8
+}
+
+func normalizeHeading(line string) string {
+	return strings.Trim(strings.TrimSpace(line), "#: ")
 }

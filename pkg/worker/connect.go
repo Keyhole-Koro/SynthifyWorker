@@ -12,7 +12,7 @@ import (
 
 type ConnectHandler struct {
 	processor interface {
-		Process(ctx context.Context, jobID, documentID, workspaceID string) error
+		Process(ctx context.Context, req ExecutePlanRequest) error
 	}
 	jobRepo interface {
 		GetProcessingJob(jobID string) (*domain.DocumentProcessingJob, bool)
@@ -32,7 +32,7 @@ type ConnectHandler struct {
 }
 
 func NewConnectHandler(processor interface {
-	Process(ctx context.Context, jobID, documentID, workspaceID string) error
+	Process(ctx context.Context, req ExecutePlanRequest) error
 }, jobRepo interface {
 	GetProcessingJob(jobID string) (*domain.DocumentProcessingJob, bool)
 	GetJobCapability(jobID string) (*domain.JobCapability, bool)
@@ -99,11 +99,7 @@ func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.R
 	if err := validateExecutePlanRequest(dispatchReq); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := h.processor.Process(ctx,
-		dispatchReq.JobID,
-		dispatchReq.DocumentID,
-		dispatchReq.WorkspaceID,
-	); err != nil {
+	if err := h.processor.Process(ctx, dispatchReq); err != nil {
 		if errors.Is(err, ErrApprovalRequired) || errors.Is(err, ErrPlanRejected) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 		}

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 	"google.golang.org/adk/tool"
@@ -28,23 +29,54 @@ func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
 		Name:        "persist_knowledge_tree",
 		Description: "Permanently saves the synthesized knowledge tree items to the database.",
 	}, func(ctx tool.Context, args PersistenceArgs) (PersistenceResult, error) {
-		// This tool performs actual DB writes via CreateStructuredItemWithCapability.
-		// Since ADK tools don't have direct access to PipelineContext,
-		// we must ensure the capability is handled, perhaps via the tool base context.
-
-		// For the sake of this architectural refresh, we assume the base context
-		// has been pre-configured with the required capability or a way to get it.
-
 		if len(args.Items) == 0 {
 			return PersistenceResult{Success: false, Message: "No items to persist"}, nil
 		}
-
-		// Logic similar to old stages.PersistenceStage
-		for _, item := range args.Items {
-			fmt.Printf("Persisting item: %s\n", item.Label)
-			// base.Repo.CreateStructuredItemWithCapability(...)
+		if base == nil || base.Repo == nil {
+			return PersistenceResult{}, fmt.Errorf("repository is not configured")
+		}
+		capability, ok := base.Repo.GetJobCapability(args.JobID)
+		if !ok || capability == nil {
+			return PersistenceResult{}, fmt.Errorf("job capability not found: %s", args.JobID)
 		}
 
-		return PersistenceResult{Success: true, Message: fmt.Sprintf("Successfully persisted %d items", len(args.Items))}, nil
+		itemIDs := make(map[string]string, len(args.Items))
+		rootID, _ := base.Repo.GetWorkspaceRootItemID(args.WorkspaceID)
+		created := 0
+		for _, item := range args.Items {
+			parentID := rootID
+			if mapped := itemIDs[item.ParentLocalID]; mapped != "" {
+				parentID = mapped
+			}
+			label := strings.TrimSpace(item.Label)
+			if label == "" {
+				label = item.LocalID
+			}
+			createdItem := base.Repo.CreateStructuredItemWithCapability(
+				capability,
+				args.JobID,
+				args.DocumentID,
+				args.WorkspaceID,
+				label,
+				item.Level,
+				item.Description,
+				item.SummaryHTML,
+				"llm_worker",
+				parentID,
+				item.SourceChunkIDs,
+			)
+			if createdItem == nil {
+				return PersistenceResult{}, fmt.Errorf("failed to create item %q", label)
+			}
+			itemIDs[item.LocalID] = createdItem.ItemID
+			for _, chunkID := range item.SourceChunkIDs {
+				if err := base.Repo.UpsertItemSource(createdItem.ItemID, args.DocumentID, chunkID, item.Description, 0.75); err != nil {
+					return PersistenceResult{}, err
+				}
+			}
+			created++
+		}
+
+		return PersistenceResult{Success: true, Message: fmt.Sprintf("Successfully persisted %d items", created)}, nil
 	})
 }

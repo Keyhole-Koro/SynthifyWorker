@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"strings"
+
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -21,7 +23,24 @@ func NewCritiqueTool() (tool.Tool, error) {
 		Name:        "quality_critique",
 		Description: "Critiques the generated output for potential hallucinations, logical gaps, or inaccuracies. Use this before finalizing results.",
 	}, func(ctx tool.Context, args CritiqueArgs) (CritiqueResult, error) {
-		// Stub: in real world, this would call an LLM with a 'critic' prompt.
-		return CritiqueResult{Valid: true}, nil
+		var issues []string
+		if strings.TrimSpace(args.TargetData) == "" {
+			issues = append(issues, "target data is empty")
+		}
+		if strings.Contains(strings.ToLower(args.TargetData), "stub") {
+			issues = append(issues, "target data still contains stub content")
+		}
+		return CritiqueResult{
+			Valid:       len(issues) == 0,
+			Issues:      issues,
+			Suggestions: suggestionsForIssues(issues),
+		}, nil
 	})
+}
+
+func suggestionsForIssues(issues []string) []string {
+	if len(issues) == 0 {
+		return nil
+	}
+	return []string{"Regenerate the affected section from source chunks before persisting."}
 }
