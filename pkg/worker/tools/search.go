@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"fmt"
+
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -28,40 +30,28 @@ func NewSearchTool(base *BaseContext) (tool.Tool, error) {
 		Description: "Performs workspace-wide RAG. Finds relevant information across the current document or all documents in the same workspace.",
 	}, func(ctx tool.Context, args SearchArgs) (SearchResult, error) {
 		if base == nil || base.Repo == nil {
-			return SearchResult{}, nil
+			return SearchResult{}, fmt.Errorf("repository is not configured")
+		}
+		if base.Embedder == nil {
+			return SearchResult{}, fmt.Errorf("embedder is required: configure GEMINI_API_KEY")
 		}
 
-		if base.Embedder != nil && args.Query != "" {
-			vec, err := base.Embedder.EmbedText(ctx, args.Query)
-			if err == nil {
-				chunks, err := base.Repo.SearchRelatedChunksByVector(ctx, args.WorkspaceID, vec.Slice(), 8)
-				if err == nil {
-					results := make([]SearchResultItem, 0, len(chunks))
-					for i, chunk := range chunks {
-						score := 1.0 - float64(i)/float64(len(chunks)+1)
-						results = append(results, SearchResultItem{
-							DocumentID: chunk.DocumentID,
-							ChunkID:    chunk.ChunkID,
-							Text:       chunk.Text,
-							Score:      score,
-						})
-					}
-					return SearchResult{Results: results}, nil
-				}
-			}
-		}
-
-		chunks, err := base.Repo.SearchRelatedChunks(ctx, args.WorkspaceID, args.Query, 8)
+		vec, err := base.Embedder.EmbedText(ctx, args.Query)
 		if err != nil {
-			return SearchResult{}, err
+			return SearchResult{}, fmt.Errorf("embed query: %w", err)
+		}
+		chunks, err := base.Repo.SearchRelatedChunksByVector(ctx, args.WorkspaceID, vec.Slice(), 8)
+		if err != nil {
+			return SearchResult{}, fmt.Errorf("vector search: %w", err)
 		}
 		results := make([]SearchResultItem, 0, len(chunks))
-		for _, chunk := range chunks {
+		for i, chunk := range chunks {
+			score := 1.0 - float64(i)/float64(len(chunks)+1)
 			results = append(results, SearchResultItem{
 				DocumentID: chunk.DocumentID,
 				ChunkID:    chunk.ChunkID,
 				Text:       chunk.Text,
-				Score:      0.5,
+				Score:      score,
 			})
 		}
 		return SearchResult{Results: results}, nil

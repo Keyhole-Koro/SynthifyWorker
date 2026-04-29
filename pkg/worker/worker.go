@@ -72,6 +72,7 @@ type Worker struct {
 	repo         Repository
 	status       jobstatus.Notifier
 	runner       *runner.Runner
+	embedder     tools.Embedder
 }
 
 type ExecutePlanRequest struct {
@@ -129,6 +130,7 @@ func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobsta
 		repo:         repo,
 		status:       notifier,
 		runner:       r,
+		embedder:     embedder,
 	}, nil
 }
 
@@ -203,6 +205,16 @@ func (w *Worker) processDocument(ctx context.Context, req ExecutePlanRequest, pa
 	chunks := buildChunks(req.DocumentID, rawText)
 	if len(chunks) == 0 {
 		return fmt.Errorf("document produced no chunks")
+	}
+	if w.embedder == nil {
+		return fmt.Errorf("embedder is required: configure GEMINI_API_KEY")
+	}
+	for _, chunk := range chunks {
+		vec, err := w.embedder.EmbedText(ctx, chunk.Heading+" "+chunk.Text)
+		if err != nil {
+			return fmt.Errorf("embed chunk %s: %w", chunk.ChunkID, err)
+		}
+		chunk.Embedding = vec.Slice()
 	}
 	if err := w.repo.SaveDocumentChunks(ctx, req.DocumentID, chunks); err != nil {
 		return err

@@ -46,13 +46,21 @@ func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 			outline = append(outline, heading)
 		}
 		if base != nil && base.Repo != nil {
+			if base.Embedder == nil {
+				return ChunkingResult{}, fmt.Errorf("embedder is required: configure GEMINI_API_KEY")
+			}
 			domainChunks := make([]*domain.DocumentChunk, 0, len(chunks))
 			for _, chunk := range chunks {
+				vec, err := base.Embedder.EmbedText(ctx, chunk.Heading+" "+chunk.Text)
+				if err != nil {
+					return ChunkingResult{}, fmt.Errorf("embed chunk %d: %w", chunk.ChunkIndex, err)
+				}
 				domainChunks = append(domainChunks, &domain.DocumentChunk{
 					ChunkID:    fmt.Sprintf("%s_chunk_%d", args.DocumentID, chunk.ChunkIndex),
 					DocumentID: args.DocumentID,
 					Heading:    chunk.Heading,
 					Text:       chunk.Text,
+					Embedding:  vec.Slice(),
 				})
 			}
 			if err := base.Repo.SaveDocumentChunks(ctx, args.DocumentID, domainChunks); err != nil {
