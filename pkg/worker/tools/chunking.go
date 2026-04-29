@@ -55,7 +55,9 @@ func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 					Text:       chunk.Text,
 				})
 			}
-			_ = base.Repo.SaveDocumentChunks(args.DocumentID, domainChunks)
+			if err := base.Repo.SaveDocumentChunks(ctx, args.DocumentID, domainChunks); err != nil {
+				return ChunkingResult{}, fmt.Errorf("save chunks: %w", err)
+			}
 		}
 		return ChunkingResult{Chunks: chunks, Outline: outline}, nil
 	})

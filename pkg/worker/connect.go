@@ -15,16 +15,16 @@ type ConnectHandler struct {
 		Process(ctx context.Context, req ExecutePlanRequest) error
 	}
 	jobRepo interface {
-		GetProcessingJob(jobID string) (*domain.DocumentProcessingJob, bool)
-		GetJobCapability(jobID string) (*domain.JobCapability, bool)
-		GetDocument(id string) (*domain.Document, bool)
-		GetDocumentChunks(documentID string) ([]*domain.DocumentChunk, bool)
-		GetJobPlanningSignals(documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
-		GetTreeByWorkspace(wsID string) ([]*domain.Item, bool)
-		GetJobExecutionPlan(jobID string) (*domain.JobExecutionPlan, bool)
-		UpsertJobExecutionPlan(jobID string, plan *domain.JobExecutionPlan) bool
-		UpsertJobEvaluation(jobID string, result *domain.JobEvaluationResult) bool
-		EvaluateJob(jobID string) (*domain.JobEvaluationResult, bool)
+		GetProcessingJob(ctx context.Context, jobID string) (*domain.DocumentProcessingJob, bool)
+		GetJobCapability(ctx context.Context, jobID string) (*domain.JobCapability, bool)
+		GetDocument(ctx context.Context, id string) (*domain.Document, bool)
+		GetDocumentChunks(ctx context.Context, documentID string) ([]*domain.DocumentChunk, bool)
+		GetJobPlanningSignals(ctx context.Context, documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
+		GetTreeByWorkspace(ctx context.Context, wsID string) ([]*domain.Item, bool)
+		GetJobExecutionPlan(ctx context.Context, jobID string) (*domain.JobExecutionPlan, bool)
+		UpsertJobExecutionPlan(ctx context.Context, jobID string, plan *domain.JobExecutionPlan) bool
+		UpsertJobEvaluation(ctx context.Context, jobID string, result *domain.JobEvaluationResult) bool
+		EvaluateJob(ctx context.Context, jobID string) (*domain.JobEvaluationResult, bool)
 	}
 	planner   *Planner
 	evaluator *JobEvaluator
@@ -34,16 +34,16 @@ type ConnectHandler struct {
 func NewConnectHandler(processor interface {
 	Process(ctx context.Context, req ExecutePlanRequest) error
 }, jobRepo interface {
-	GetProcessingJob(jobID string) (*domain.DocumentProcessingJob, bool)
-	GetJobCapability(jobID string) (*domain.JobCapability, bool)
-	GetDocument(id string) (*domain.Document, bool)
-	GetDocumentChunks(documentID string) ([]*domain.DocumentChunk, bool)
-	GetJobPlanningSignals(documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
-	GetTreeByWorkspace(wsID string) ([]*domain.Item, bool)
-	GetJobExecutionPlan(jobID string) (*domain.JobExecutionPlan, bool)
-	UpsertJobExecutionPlan(jobID string, plan *domain.JobExecutionPlan) bool
-	UpsertJobEvaluation(jobID string, result *domain.JobEvaluationResult) bool
-	EvaluateJob(jobID string) (*domain.JobEvaluationResult, bool)
+	GetProcessingJob(ctx context.Context, jobID string) (*domain.DocumentProcessingJob, bool)
+	GetJobCapability(ctx context.Context, jobID string) (*domain.JobCapability, bool)
+	GetDocument(ctx context.Context, id string) (*domain.Document, bool)
+	GetDocumentChunks(ctx context.Context, documentID string) ([]*domain.DocumentChunk, bool)
+	GetJobPlanningSignals(ctx context.Context, documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
+	GetTreeByWorkspace(ctx context.Context, wsID string) ([]*domain.Item, bool)
+	GetJobExecutionPlan(ctx context.Context, jobID string) (*domain.JobExecutionPlan, bool)
+	UpsertJobExecutionPlan(ctx context.Context, jobID string, plan *domain.JobExecutionPlan) bool
+	UpsertJobEvaluation(ctx context.Context, jobID string, result *domain.JobEvaluationResult) bool
+	EvaluateJob(ctx context.Context, jobID string) (*domain.JobEvaluationResult, bool)
 }, planner *Planner, evaluator *JobEvaluator, token string) *ConnectHandler {
 	return &ConnectHandler{
 		processor: processor,
@@ -126,7 +126,7 @@ func (h *ConnectHandler) EvaluateJobArtifact(ctx context.Context, req *connect.R
 		}
 	} else {
 		var ok bool
-		result, ok = h.jobRepo.EvaluateJob(req.Msg.GetJobId())
+		result, ok = h.jobRepo.EvaluateJob(ctx, req.Msg.GetJobId())
 		if !ok || result == nil {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("evaluation result not found"))
 		}

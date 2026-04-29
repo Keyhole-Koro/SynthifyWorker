@@ -16,6 +16,7 @@ import (
 	treev1connect "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1/treev1connect"
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/synthify/backend/worker/pkg/worker/agents"
+	"github.com/synthify/backend/worker/pkg/worker/llm"
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 	"github.com/synthify/backend/worker/pkg/worker/sourcefiles"
 	"github.com/synthify/backend/worker/pkg/worker/tools"
@@ -34,31 +35,33 @@ var (
 )
 
 type Repository interface {
-	GetAccount(accountID string) (*domain.Account, error)
-	GetWorkspace(workspaceID string) (*domain.Workspace, bool)
-	GetDocument(id string) (*domain.Document, bool)
-	GetDocumentChunks(documentID string) ([]*domain.DocumentChunk, bool)
-	GetJobPlanningSignals(documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
-	GetTreeByWorkspace(wsID string) ([]*domain.Item, bool)
-	GetWorkspaceRootItemID(workspaceID string) (string, bool)
-	GetLatestProcessingJob(docID string) (*domain.DocumentProcessingJob, bool)
-	GetProcessingJob(jobID string) (*domain.DocumentProcessingJob, bool)
-	GetJobCapability(jobID string) (*domain.JobCapability, bool)
-	GetJobExecutionPlan(jobID string) (*domain.JobExecutionPlan, bool)
-	UpsertJobExecutionPlan(jobID string, plan *domain.JobExecutionPlan) bool
-	UpsertJobEvaluation(jobID string, result *domain.JobEvaluationResult) bool
-	EvaluateJob(jobID string) (*domain.JobEvaluationResult, bool)
-	CreateProcessingJob(docID, workspaceID string, jobType treev1.JobType) *domain.DocumentProcessingJob
-	MarkProcessingJobRunning(jobID string) bool
-	UpdateProcessingJobStage(jobID, stage string) bool
-	FailProcessingJob(jobID, errorMessage string) bool
-	CompleteProcessingJob(jobID string) bool
-	SaveDocumentChunks(documentID string, chunks []*domain.DocumentChunk) error
+	GetAccount(ctx context.Context, accountID string) (*domain.Account, error)
+	GetWorkspace(ctx context.Context, workspaceID string) (*domain.Workspace, bool)
+	GetDocument(ctx context.Context, id string) (*domain.Document, bool)
+	GetDocumentChunks(ctx context.Context, documentID string) ([]*domain.DocumentChunk, bool)
+	GetJobPlanningSignals(ctx context.Context, documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
+	GetTreeByWorkspace(ctx context.Context, wsID string) ([]*domain.Item, bool)
+	GetWorkspaceRootItemID(ctx context.Context, workspaceID string) (string, bool)
+	GetSubtree(ctx context.Context, rootItemID string, maxDepth int) ([]*domain.SubtreeItem, error)
+	GetLatestProcessingJob(ctx context.Context, docID string) (*domain.DocumentProcessingJob, bool)
+	GetProcessingJob(ctx context.Context, jobID string) (*domain.DocumentProcessingJob, bool)
+	GetJobCapability(ctx context.Context, jobID string) (*domain.JobCapability, bool)
+	GetJobExecutionPlan(ctx context.Context, jobID string) (*domain.JobExecutionPlan, bool)
+	UpsertJobExecutionPlan(ctx context.Context, jobID string, plan *domain.JobExecutionPlan) bool
+	UpsertJobEvaluation(ctx context.Context, jobID string, result *domain.JobEvaluationResult) bool
+	EvaluateJob(ctx context.Context, jobID string) (*domain.JobEvaluationResult, bool)
+	CreateProcessingJob(ctx context.Context, docID, workspaceID string, jobType treev1.JobType) *domain.DocumentProcessingJob
+	MarkProcessingJobRunning(ctx context.Context, jobID string) bool
+	UpdateProcessingJobStage(ctx context.Context, jobID, stage string) bool
+	FailProcessingJob(ctx context.Context, jobID, errorMessage string) bool
+	CompleteProcessingJob(ctx context.Context, jobID string) bool
+	SaveDocumentChunks(ctx context.Context, documentID string, chunks []*domain.DocumentChunk) error
 
-	CreateStructuredItemWithCapability(capability *domain.JobCapability, jobID, documentID, workspaceID, label string, level int, description, summaryHTML, createdBy, parentID string, sourceChunkIDs []string) *domain.Item
-	UpsertItemSource(itemID, documentID, chunkID, sourceText string, confidence float64) error
-	UpdateItemSummaryHTMLWithCapability(capability *domain.JobCapability, jobID, itemID, summaryHTML string) bool
+	CreateStructuredItemWithCapability(ctx context.Context, capability *domain.JobCapability, jobID, documentID, workspaceID, label string, level int, description, summaryHTML, createdBy, parentID string, sourceChunkIDs []string) *domain.Item
+	UpsertItemSource(ctx context.Context, itemID, documentID, chunkID, sourceText string, confidence float64) error
+	UpdateItemSummaryHTMLWithCapability(ctx context.Context, capability *domain.JobCapability, jobID, itemID, summaryHTML string) bool
 
+	ListJobApprovalRequests(ctx context.Context, jobID string) ([]*domain.JobApprovalRequest, bool)
 	SearchRelatedChunks(ctx context.Context, workspaceID, query string, limit int) ([]*domain.DocumentChunk, error)
 	SearchRelatedChunksByVector(ctx context.Context, workspaceID string, embedding []float32, limit int) ([]*domain.DocumentChunk, error)
 	LogToolCall(ctx context.Context, jobID, toolName, inputJSON, outputJSON string, durationMs int64) error
@@ -100,7 +103,12 @@ func NewWorker(repo Repository, m model.LLM) (*Worker, error) {
 }
 
 func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM, embedder tools.Embedder) (*Worker, error) {
-	base := &tools.BaseContext{Repo: treeRepo, Embedder: embedder}
+	base := &tools.BaseContext{
+		Repo:     treeRepo,
+		Embedder: embedder,
+		Glossary: tools.NewMemoryGlossary(),
+		Journal:  tools.NewMemoryJournal(),
+	}
 	orch, err := agents.NewOrchestrator(m, base, repo)
 	if err != nil {
 		return nil, err
@@ -130,12 +138,12 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 	}
 	log.Printf("LLM worker processing job %s (doc: %s)", req.JobID, req.DocumentID)
 
-	job, ok := w.repo.GetProcessingJob(req.JobID)
+	job, ok := w.repo.GetProcessingJob(ctx, req.JobID)
 	if !ok {
 		return fmt.Errorf("job %s not found", req.JobID)
 	}
 
-	if _, ok := w.repo.GetDocument(req.DocumentID); !ok {
+	if _, ok := w.repo.GetDocument(ctx, req.DocumentID); !ok {
 		return fmt.Errorf("document %s not found", req.DocumentID)
 	}
 
@@ -147,14 +155,22 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 		JobType:     job.JobType.String(),
 	}
 
-	w.repo.MarkProcessingJobRunning(req.JobID)
+	if approvals, ok := w.repo.ListJobApprovalRequests(ctx, req.JobID); ok {
+		for _, a := range approvals {
+			if a.Status == "rejected" {
+				return ErrPlanRejected
+			}
+		}
+	}
+
+	w.repo.MarkProcessingJobRunning(ctx, req.JobID)
 	if w.status != nil {
 		w.status.Running(ctx, payload)
 	}
 
 	if err := w.processDocument(ctx, req, payload); err != nil {
 		log.Printf("Agent execution failed: %v", err)
-		w.repo.FailProcessingJob(req.JobID, err.Error())
+		w.repo.FailProcessingJob(ctx, req.JobID, err.Error())
 		if w.status != nil {
 			w.status.Failed(ctx, payload, err.Error())
 		}
@@ -162,7 +178,7 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 	}
 
 	log.Printf("LLM worker job %s completed successfully", req.JobID)
-	w.repo.CompleteProcessingJob(req.JobID)
+	w.repo.CompleteProcessingJob(ctx, req.JobID)
 	if w.status != nil {
 		w.status.Completed(ctx, payload)
 	}
@@ -174,7 +190,7 @@ func (w *Worker) processDocument(ctx context.Context, req ExecutePlanRequest, pa
 	if w.status != nil {
 		w.status.StageProgress(ctx, payload, string(pipeline.StageTextExtraction), 10, "Reading source document")
 	}
-	w.repo.UpdateProcessingJobStage(req.JobID, string(pipeline.StageTextExtraction))
+	w.repo.UpdateProcessingJobStage(ctx, req.JobID, string(pipeline.StageTextExtraction))
 	rawText, err := w.loadRawText(ctx, req)
 	if err != nil {
 		return err
@@ -183,19 +199,19 @@ func (w *Worker) processDocument(ctx context.Context, req ExecutePlanRequest, pa
 	if w.status != nil {
 		w.status.StageProgress(ctx, payload, string(pipeline.StageSemanticChunking), 35, "Chunking document")
 	}
-	w.repo.UpdateProcessingJobStage(req.JobID, string(pipeline.StageSemanticChunking))
+	w.repo.UpdateProcessingJobStage(ctx, req.JobID, string(pipeline.StageSemanticChunking))
 	chunks := buildChunks(req.DocumentID, rawText)
 	if len(chunks) == 0 {
 		return fmt.Errorf("document produced no chunks")
 	}
-	if err := w.repo.SaveDocumentChunks(req.DocumentID, chunks); err != nil {
+	if err := w.repo.SaveDocumentChunks(ctx, req.DocumentID, chunks); err != nil {
 		return err
 	}
 
 	if w.status != nil {
 		w.status.StageProgress(ctx, payload, string(pipeline.StageGoalDrivenSynthesis), 65, "Synthesizing knowledge items")
 	}
-	w.repo.UpdateProcessingJobStage(req.JobID, string(pipeline.StageGoalDrivenSynthesis))
+	w.repo.UpdateProcessingJobStage(ctx, req.JobID, string(pipeline.StageGoalDrivenSynthesis))
 	items := synthesizeItems(req.DocumentID, chunks)
 	if len(items) == 0 {
 		return fmt.Errorf("no items synthesized")
@@ -206,7 +222,7 @@ func (w *Worker) processDocument(ctx context.Context, req ExecutePlanRequest, pa
 	if w.status != nil {
 		w.status.StageProgress(ctx, payload, string(pipeline.StagePersistence), 90, "Saving generated knowledge")
 	}
-	w.repo.UpdateProcessingJobStage(req.JobID, string(pipeline.StagePersistence))
+	w.repo.UpdateProcessingJobStage(ctx, req.JobID, string(pipeline.StagePersistence))
 	return w.persistItems(ctx, req, items, chunks)
 }
 
@@ -221,7 +237,7 @@ func (w *Worker) loadRawText(ctx context.Context, req ExecutePlanRequest) (strin
 			return text, nil
 		}
 	}
-	if chunks, ok := w.repo.GetDocumentChunks(req.DocumentID); ok && len(chunks) > 0 {
+	if chunks, ok := w.repo.GetDocumentChunks(ctx, req.DocumentID); ok && len(chunks) > 0 {
 		var b strings.Builder
 		for _, chunk := range chunks {
 			if chunk.Heading != "" {
@@ -252,11 +268,11 @@ func (w *Worker) runAgentBestEffort(ctx context.Context, req ExecutePlanRequest,
 }
 
 func (w *Worker) persistItems(ctx context.Context, req ExecutePlanRequest, items []pipeline.SynthesizedItem, chunks []*domain.DocumentChunk) error {
-	capability, ok := w.repo.GetJobCapability(req.JobID)
+	capability, ok := w.repo.GetJobCapability(ctx, req.JobID)
 	if !ok || capability == nil {
 		return fmt.Errorf("job capability not found: %s", req.JobID)
 	}
-	rootID, _ := w.repo.GetWorkspaceRootItemID(req.WorkspaceID)
+	rootID, _ := w.repo.GetWorkspaceRootItemID(ctx, req.WorkspaceID)
 	chunkByID := make(map[string]*domain.DocumentChunk, len(chunks))
 	for _, chunk := range chunks {
 		chunkByID[chunk.ChunkID] = chunk
@@ -268,6 +284,7 @@ func (w *Worker) persistItems(ctx context.Context, req ExecutePlanRequest, items
 			parentID = firstNonEmpty(itemIDs[item.ParentLocalID], rootID)
 		}
 		created := w.repo.CreateStructuredItemWithCapability(
+			ctx,
 			capability,
 			req.JobID,
 			req.DocumentID,
@@ -289,7 +306,7 @@ func (w *Worker) persistItems(ctx context.Context, req ExecutePlanRequest, items
 			if chunk := chunkByID[chunkID]; chunk != nil {
 				sourceText = truncateRunes(chunk.Text, 1000)
 			}
-			if err := w.repo.UpsertItemSource(created.ItemID, req.DocumentID, chunkID, sourceText, 0.75); err != nil {
+			if err := w.repo.UpsertItemSource(ctx, created.ItemID, req.DocumentID, chunkID, sourceText, 0.75); err != nil {
 				return err
 			}
 		}
@@ -311,10 +328,10 @@ func (p *Planner) GenerateExecutionPlan(ctx context.Context, req ExecutePlanRequ
 	if err := validateExecutePlanRequest(req); err != nil {
 		return nil, err
 	}
-	if _, ok := p.repo.GetDocument(req.DocumentID); !ok {
+	if _, ok := p.repo.GetDocument(ctx, req.DocumentID); !ok {
 		return nil, fmt.Errorf("document %s not found", req.DocumentID)
 	}
-	signals, _ := p.repo.GetJobPlanningSignals(req.DocumentID, req.WorkspaceID, req.TreeID)
+	signals, _ := p.repo.GetJobPlanningSignals(ctx, req.DocumentID, req.WorkspaceID, req.TreeID)
 	payload := map[string]any{
 		"steps": []map[string]any{
 			{"name": "text_extraction", "operation": treev1.JobOperation_JOB_OPERATION_READ_DOCUMENT.String(), "risk_tier": "tier_0"},
@@ -336,7 +353,7 @@ func (p *Planner) GenerateExecutionPlan(ctx context.Context, req ExecutePlanRequ
 		PlanJSON:  mustJSON(payload),
 		CreatedBy: "llm_worker",
 	}
-	if !p.repo.UpsertJobExecutionPlan(req.JobID, plan) {
+	if !p.repo.UpsertJobExecutionPlan(ctx, req.JobID, plan) {
 		return nil, fmt.Errorf("failed to upsert execution plan")
 	}
 	return plan, nil
@@ -347,24 +364,52 @@ type JobEvaluator struct {
 	repo  Repository
 }
 
-func NewJobEvaluator(repo Repository, m model.LLM) *JobEvaluator {
-	eval, _ := agents.NewEvaluator(m, nil)
-	return &JobEvaluator{repo: repo, agent: eval}
+func NewJobEvaluator(repo Repository, llmClient llm.Client) *JobEvaluator {
+	return &JobEvaluator{repo: repo, agent: agents.NewEvaluator(llmClient)}
 }
 
 func (e *JobEvaluator) Evaluate(ctx context.Context, jobID string) (*domain.JobEvaluationResult, error) {
-	result, ok := e.repo.EvaluateJob(jobID)
-	if !ok || result == nil {
-		return nil, fmt.Errorf("evaluation result not found for job %s", jobID)
+	job, ok := e.repo.GetProcessingJob(ctx, jobID)
+	if !ok {
+		return nil, fmt.Errorf("job %s not found", jobID)
 	}
-	if result.Status == "" {
-		if result.Passed {
-			result.Status = "passed"
-		} else {
-			result.Status = "failed"
-		}
+
+	rootID, ok := e.repo.GetWorkspaceRootItemID(ctx, job.WorkspaceID)
+	if !ok {
+		return nil, fmt.Errorf("root item not found for workspace %s", job.WorkspaceID)
 	}
-	e.repo.UpsertJobEvaluation(jobID, result)
+
+	subtree, err := e.repo.GetSubtree(ctx, rootID, 5)
+	if err != nil {
+		return nil, fmt.Errorf("get subtree: %w", err)
+	}
+
+	treeJSON, err := json.Marshal(subtree)
+	if err != nil {
+		return nil, fmt.Errorf("marshal tree: %w", err)
+	}
+
+	out, err := e.agent.EvaluateTree(ctx, string(treeJSON))
+	if err != nil {
+		return nil, err
+	}
+
+	findings := make([]string, len(out.Findings))
+	copy(findings, out.Findings)
+
+	result := &domain.JobEvaluationResult{
+		JobID:    jobID,
+		Passed:   out.Passed,
+		Score:    int32(out.Score),
+		Summary:  out.Summary,
+		Findings: findings,
+		Status:   "failed",
+	}
+	if out.Passed {
+		result.Status = "passed"
+	}
+
+	e.repo.UpsertJobEvaluation(ctx, jobID, result)
 	return result, nil
 }
 

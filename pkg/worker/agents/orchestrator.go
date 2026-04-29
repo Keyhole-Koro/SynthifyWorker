@@ -34,7 +34,7 @@ func NewOrchestrator(m model.LLM, base *tools.BaseContext, repo any) (*Orchestra
 	if err != nil {
 		return nil, err
 	}
-	journal, err := tools.NewJournalTool()
+	journal, err := tools.NewJournalTool(base)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func NewOrchestrator(m model.LLM, base *tools.BaseContext, repo any) (*Orchestra
 	if err != nil {
 		return nil, err
 	}
-	glossary, err := tools.NewGlossaryTool()
+	glossary, err := tools.NewGlossaryTool(base)
 	if err != nil {
 		return nil, err
 	}

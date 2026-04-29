@@ -47,7 +47,7 @@ func main() {
 		log.Fatal(err)
 	}
 	planner := worker.NewPlanner(store, adkModel)
-	evaluator := worker.NewJobEvaluator(store, adkModel)
+	evaluator := worker.NewJobEvaluator(store, embedder)
 
 	mux := http.NewServeMux()
 	mux.Handle(treev1connect.NewWorkerServiceHandler(worker.NewConnectHandler(workerService, store, planner, evaluator, cfg.InternalWorkerToken)))

@@ -35,13 +35,13 @@ func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
 		if base == nil || base.Repo == nil {
 			return PersistenceResult{}, fmt.Errorf("repository is not configured")
 		}
-		capability, ok := base.Repo.GetJobCapability(args.JobID)
+		capability, ok := base.Repo.GetJobCapability(ctx, args.JobID)
 		if !ok || capability == nil {
 			return PersistenceResult{}, fmt.Errorf("job capability not found: %s", args.JobID)
 		}
 
 		itemIDs := make(map[string]string, len(args.Items))
-		rootID, _ := base.Repo.GetWorkspaceRootItemID(args.WorkspaceID)
+		rootID, _ := base.Repo.GetWorkspaceRootItemID(ctx, args.WorkspaceID)
 		created := 0
 		for _, item := range args.Items {
 			parentID := rootID
@@ -53,6 +53,7 @@ func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
 				label = item.LocalID
 			}
 			createdItem := base.Repo.CreateStructuredItemWithCapability(
+				ctx,
 				capability,
 				args.JobID,
 				args.DocumentID,
@@ -70,7 +71,7 @@ func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
 			}
 			itemIDs[item.LocalID] = createdItem.ItemID
 			for _, chunkID := range item.SourceChunkIDs {
-				if err := base.Repo.UpsertItemSource(createdItem.ItemID, args.DocumentID, chunkID, item.Description, 0.75); err != nil {
+				if err := base.Repo.UpsertItemSource(ctx, createdItem.ItemID, args.DocumentID, chunkID, item.Description, 0.75); err != nil {
 					return PersistenceResult{}, err
 				}
 			}
