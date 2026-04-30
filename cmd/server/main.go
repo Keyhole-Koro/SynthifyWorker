@@ -50,8 +50,7 @@ func main() {
 	evaluator := worker.NewJobEvaluator(store, embedder)
 
 	mux := http.NewServeMux()
-	workerPath, workerHandler := treev1connect.NewWorkerServiceHandler(worker.NewConnectHandler(workerService, store, planner, evaluator, cfg.InternalWorkerToken))
-	mux.Handle(workerPath, middleware.WithWorkerAuth(cfg.InternalWorkerToken)(workerHandler))
+	mux.Handle(treev1connect.NewWorkerServiceHandler(worker.NewConnectHandler(workerService, store, planner, evaluator)))
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, `{"status":"ok"}`)

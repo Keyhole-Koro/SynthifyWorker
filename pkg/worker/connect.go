@@ -16,25 +16,20 @@ type ConnectHandler struct {
 	jobRepo   Repository
 	planner   *Planner
 	evaluator *JobEvaluator
-	token     string
 }
 
 func NewConnectHandler(processor interface {
 	Process(ctx context.Context, req ExecutePlanRequest) error
-}, jobRepo Repository, planner *Planner, evaluator *JobEvaluator, token string) *ConnectHandler {
+}, jobRepo Repository, planner *Planner, evaluator *JobEvaluator) *ConnectHandler {
 	return &ConnectHandler{
 		processor: processor,
 		jobRepo:   jobRepo,
 		planner:   planner,
 		evaluator: evaluator,
-		token:     token,
 	}
 }
 
 func (h *ConnectHandler) GenerateExecutionPlan(ctx context.Context, req *connect.Request[treev1.GenerateExecutionPlanRequest]) (*connect.Response[treev1.GenerateExecutionPlanResponse], error) {
-	if h.token != "" && req.Header().Get("X-Worker-Token") != h.token {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("forbidden"))
-	}
 	if req.Msg.GetJobId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))
 	}
@@ -60,9 +55,6 @@ func (h *ConnectHandler) GenerateExecutionPlan(ctx context.Context, req *connect
 }
 
 func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.Request[treev1.ExecuteApprovedPlanRequest]) (*connect.Response[treev1.ExecuteApprovedPlanResponse], error) {
-	if h.token != "" && req.Header().Get("X-Worker-Token") != h.token {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("forbidden"))
-	}
 	dispatchReq := ExecutePlanRequest{
 		JobID:       req.Msg.GetJobId(),
 		JobType:     req.Msg.GetJobType(),
@@ -86,9 +78,6 @@ func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.R
 }
 
 func (h *ConnectHandler) EvaluateJobArtifact(ctx context.Context, req *connect.Request[treev1.EvaluateJobArtifactRequest]) (*connect.Response[treev1.EvaluateJobArtifactResponse], error) {
-	if h.token != "" && req.Header().Get("X-Worker-Token") != h.token {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("forbidden"))
-	}
 	if req.Msg.GetJobId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))
 	}

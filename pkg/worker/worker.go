@@ -25,6 +25,7 @@ import (
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
+	"google.golang.org/api/idtoken"
 	"google.golang.org/genai"
 )
 
@@ -379,15 +380,18 @@ func (e *JobEvaluator) Evaluate(ctx context.Context, jobID string) (*domain.JobE
 
 type HTTPDispatcher struct {
 	baseURL string
-	token   string
 }
 
-func NewHTTPDispatcher(baseURL, token string) *HTTPDispatcher {
-	return &HTTPDispatcher{baseURL: baseURL, token: token}
+func NewHTTPDispatcher(baseURL string) *HTTPDispatcher {
+	return &HTTPDispatcher{baseURL: baseURL}
 }
 
 func (d *HTTPDispatcher) GenerateExecutionPlan(ctx context.Context, req ExecutePlanRequest) error {
-	client := treev1connect.NewWorkerServiceClient(http.DefaultClient, strings.TrimRight(d.baseURL, "/"))
+	httpClient, err := d.httpClient(ctx)
+	if err != nil {
+		return err
+	}
+	client := treev1connect.NewWorkerServiceClient(httpClient, strings.TrimRight(d.baseURL, "/"))
 	rpcReq := connect.NewRequest(&treev1.GenerateExecutionPlanRequest{
 		JobId:       req.JobID,
 		JobType:     req.JobType,
@@ -397,15 +401,16 @@ func (d *HTTPDispatcher) GenerateExecutionPlan(ctx context.Context, req ExecuteP
 		Filename:    req.Filename,
 		MimeType:    req.MimeType,
 	})
-	if d.token != "" {
-		rpcReq.Header().Set("X-Worker-Token", d.token)
-	}
-	_, err := client.GenerateExecutionPlan(ctx, rpcReq)
+	_, err = client.GenerateExecutionPlan(ctx, rpcReq)
 	return err
 }
 
 func (d *HTTPDispatcher) ExecuteApprovedPlan(ctx context.Context, req ExecutePlanRequest) error {
-	client := treev1connect.NewWorkerServiceClient(http.DefaultClient, strings.TrimRight(d.baseURL, "/"))
+	httpClient, err := d.httpClient(ctx)
+	if err != nil {
+		return err
+	}
+	client := treev1connect.NewWorkerServiceClient(httpClient, strings.TrimRight(d.baseURL, "/"))
 	rpcReq := connect.NewRequest(&treev1.ExecuteApprovedPlanRequest{
 		JobId:       req.JobID,
 		JobType:     req.JobType,
@@ -416,14 +421,19 @@ func (d *HTTPDispatcher) ExecuteApprovedPlan(ctx context.Context, req ExecutePla
 		Filename:    req.Filename,
 		MimeType:    req.MimeType,
 	})
-	if d.token != "" {
-		rpcReq.Header().Set("X-Worker-Token", d.token)
-	}
-	_, err := client.ExecuteApprovedPlan(ctx, rpcReq)
+	_, err = client.ExecuteApprovedPlan(ctx, rpcReq)
 	if err != nil && connect.CodeOf(err) == connect.CodeFailedPrecondition {
 		return ErrApprovalRequired
 	}
 	return err
+}
+
+func (d *HTTPDispatcher) httpClient(ctx context.Context) (*http.Client, error) {
+	baseURL := strings.TrimRight(d.baseURL, "/")
+	if !strings.HasPrefix(baseURL, "https://") {
+		return http.DefaultClient, nil
+	}
+	return idtoken.NewClient(ctx, baseURL)
 }
 
 func synthesizeItems(documentID string, chunks []*domain.DocumentChunk) []domain.SynthesizedItem {
