@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
 
 type PersistenceArgs struct {
-	JobID       string                     `json:"job_id"`
-	DocumentID  string                     `json:"document_id"`
-	WorkspaceID string                     `json:"workspace_id"`
-	Items       []pipeline.SynthesizedItem `json:"items"`
+	JobID       string                   `json:"job_id"`
+	DocumentID  string                   `json:"document_id"`
+	WorkspaceID string                   `json:"workspace_id"`
+	Items       []domain.SynthesizedItem `json:"items"`
 }
 
 type PersistenceResult struct {
@@ -22,7 +22,7 @@ type PersistenceResult struct {
 }
 
 // NewPersistenceTool writes synthesized items into the backing repository.
-// Input schema: PersistenceArgs{job_id: string, document_id: string, workspace_id: string, items: []pipeline.SynthesizedItem}.
+// Input schema: PersistenceArgs{job_id: string, document_id: string, workspace_id: string, items: []domain.SynthesizedItem}.
 // Output schema: PersistenceResult{success: bool, message: string}.
 func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{

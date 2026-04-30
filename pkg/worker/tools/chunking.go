@@ -6,7 +6,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -17,13 +16,13 @@ type ChunkingArgs struct {
 }
 
 type ChunkingResult struct {
-	Chunks  []pipeline.Chunk `json:"chunks"`
-	Outline []string         `json:"outline"`
+	Chunks  []domain.Chunk `json:"chunks"`
+	Outline []string       `json:"outline"`
 }
 
 // NewChunkingTool splits raw document text into coarse semantic chunks.
 // Input schema: ChunkingArgs{document_id: string, raw_text: string}.
-// Output schema: ChunkingResult{chunks: []pipeline.Chunk, outline: []string}.
+// Output schema: ChunkingResult{chunks: []domain.Chunk, outline: []string}.
 func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "semantic_chunking",
@@ -35,14 +34,14 @@ func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 		}
 
 		sections := splitSections(text)
-		chunks := make([]pipeline.Chunk, 0, len(sections))
+		chunks := make([]domain.Chunk, 0, len(sections))
 		outline := make([]string, 0, len(sections))
 		for i, section := range sections {
 			heading := section.heading
 			if heading == "" {
 				heading = fmt.Sprintf("Section %d", i+1)
 			}
-			chunks = append(chunks, pipeline.Chunk{ChunkIndex: i, Heading: heading, Text: section.text})
+			chunks = append(chunks, domain.Chunk{ChunkIndex: i, Heading: heading, Text: section.text})
 			outline = append(outline, heading)
 		}
 		if base != nil && base.Repo != nil {

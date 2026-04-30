@@ -3,7 +3,7 @@ package tools
 import (
 	"strings"
 
-	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -13,7 +13,7 @@ type BriefArgs struct {
 }
 
 type BriefResult struct {
-	Brief pipeline.DocumentBrief `json:"brief"`
+	Brief domain.DocumentBrief `json:"brief"`
 }
 
 func NewBriefTool() (tool.Tool, error) {
@@ -26,7 +26,7 @@ func NewBriefTool() (tool.Tool, error) {
 			topic = strings.TrimSpace(args.Outline[0])
 		}
 		return BriefResult{
-			Brief: pipeline.DocumentBrief{
+			Brief: domain.DocumentBrief{
 				Topic:        topic,
 				ClaimSummary: "Document organized around: " + strings.Join(args.Outline, ", "),
 				Outline:      append([]string(nil), args.Outline...),

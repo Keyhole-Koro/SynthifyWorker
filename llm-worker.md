@@ -72,7 +72,8 @@ Connect handler 実装は [connect.go](/home/unix/Synthify/worker/pkg/worker/con
    - テキストを見出しベースで分割する
    - `document_chunks` に保存する
 3. `goal_driven_synthesis`
-   - chunk ごとに `pipeline.SynthesizedItem` を作る
+   - chunk ごとに `domain.SynthesizedItem` を作る
+
 4. `persistence`
    - `JobCapability` を確認する
    - `tree_items` と `item_sources` を保存する

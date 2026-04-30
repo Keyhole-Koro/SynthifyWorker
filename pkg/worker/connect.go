@@ -14,18 +14,7 @@ type ConnectHandler struct {
 	processor interface {
 		Process(ctx context.Context, req ExecutePlanRequest) error
 	}
-	jobRepo interface {
-		GetProcessingJob(ctx context.Context, jobID string) (*domain.DocumentProcessingJob, bool)
-		GetJobCapability(ctx context.Context, jobID string) (*domain.JobCapability, bool)
-		GetDocument(ctx context.Context, id string) (*domain.Document, bool)
-		GetDocumentChunks(ctx context.Context, documentID string) ([]*domain.DocumentChunk, bool)
-		GetJobPlanningSignals(ctx context.Context, documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
-		GetTreeByWorkspace(ctx context.Context, wsID string) ([]*domain.Item, bool)
-		GetJobExecutionPlan(ctx context.Context, jobID string) (*domain.JobExecutionPlan, bool)
-		UpsertJobExecutionPlan(ctx context.Context, jobID string, plan *domain.JobExecutionPlan) bool
-		UpsertJobEvaluation(ctx context.Context, jobID string, result *domain.JobEvaluationResult) bool
-		EvaluateJob(ctx context.Context, jobID string) (*domain.JobEvaluationResult, bool)
-	}
+	jobRepo   Repository
 	planner   *Planner
 	evaluator *JobEvaluator
 	token     string
@@ -33,18 +22,7 @@ type ConnectHandler struct {
 
 func NewConnectHandler(processor interface {
 	Process(ctx context.Context, req ExecutePlanRequest) error
-}, jobRepo interface {
-	GetProcessingJob(ctx context.Context, jobID string) (*domain.DocumentProcessingJob, bool)
-	GetJobCapability(ctx context.Context, jobID string) (*domain.JobCapability, bool)
-	GetDocument(ctx context.Context, id string) (*domain.Document, bool)
-	GetDocumentChunks(ctx context.Context, documentID string) ([]*domain.DocumentChunk, bool)
-	GetJobPlanningSignals(ctx context.Context, documentID, workspaceID, treeID string) (*domain.JobPlanningSignals, bool)
-	GetTreeByWorkspace(ctx context.Context, wsID string) ([]*domain.Item, bool)
-	GetJobExecutionPlan(ctx context.Context, jobID string) (*domain.JobExecutionPlan, bool)
-	UpsertJobExecutionPlan(ctx context.Context, jobID string, plan *domain.JobExecutionPlan) bool
-	UpsertJobEvaluation(ctx context.Context, jobID string, result *domain.JobEvaluationResult) bool
-	EvaluateJob(ctx context.Context, jobID string) (*domain.JobEvaluationResult, bool)
-}, planner *Planner, evaluator *JobEvaluator, token string) *ConnectHandler {
+}, jobRepo Repository, planner *Planner, evaluator *JobEvaluator, token string) *ConnectHandler {
 	return &ConnectHandler{
 		processor: processor,
 		jobRepo:   jobRepo,
@@ -96,7 +74,7 @@ func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.R
 		Filename:    req.Msg.GetFilename(),
 		MimeType:    req.Msg.GetMimeType(),
 	}
-	if err := validateExecutePlanRequest(dispatchReq); err != nil {
+	if err := dispatchReq.Validate(); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if err := h.processor.Process(ctx, dispatchReq); err != nil {
@@ -137,7 +115,7 @@ func (h *ConnectHandler) EvaluateJobArtifact(ctx context.Context, req *connect.R
 		Status:        result.Status,
 		Summary:       result.Summary,
 		Score:         result.Score,
-		Findings:      append([]string(nil), result.Findings...),
+		Findings:      result.Findings,
 		MutationCount: result.MutationCount,
 	}), nil
 }

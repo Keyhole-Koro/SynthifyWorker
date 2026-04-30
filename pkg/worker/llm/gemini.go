@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/Keyhole-Koro/SynthifyShared/config"
-	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"github.com/synthify/backend/worker/pkg/worker/sourcefiles"
 	"google.golang.org/genai"
 )
@@ -90,7 +90,7 @@ func (c *GeminiClient) GenerateText(ctx context.Context, req TextRequest) (strin
 	return res.Candidates[0].Content.Parts[0].Text, nil
 }
 
-func (c *GeminiClient) generate(ctx context.Context, systemPrompt, userPrompt string, sourceFiles []pipeline.SourceFile, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+func (c *GeminiClient) generate(ctx context.Context, systemPrompt, userPrompt string, sourceFiles []domain.SourceFile, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
 	contents, cleanup, err := c.buildContents(ctx, userPrompt, sourceFiles)
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func (c *GeminiClient) generate(ctx context.Context, systemPrompt, userPrompt st
 	return c.client.Models.GenerateContent(ctx, c.model, contents, config)
 }
 
-func (c *GeminiClient) buildContents(ctx context.Context, userPrompt string, sourceFiles []pipeline.SourceFile) ([]*genai.Content, func(), error) {
+func (c *GeminiClient) buildContents(ctx context.Context, userPrompt string, sourceFiles []domain.SourceFile) ([]*genai.Content, func(), error) {
 	parts := []*genai.Part{{Text: userPrompt}}
 	var uploadedNames []string
 	cleanup := func() {
@@ -121,7 +121,7 @@ func (c *GeminiClient) buildContents(ctx context.Context, userPrompt string, sou
 	return []*genai.Content{{Parts: parts}}, cleanup, nil
 }
 
-func (c *GeminiClient) uploadSourceFile(ctx context.Context, source pipeline.SourceFile) (*genai.File, error) {
+func (c *GeminiClient) uploadSourceFile(ctx context.Context, source domain.SourceFile) (*genai.File, error) {
 	if err := sourcefiles.Fetch(ctx, &source); err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (c *GeminiClient) deleteUploadedFile(name string) {
 	_, _ = c.client.Files.Delete(cleanupCtx, name, nil)
 }
 
-func detectMIMEType(source pipeline.SourceFile) string {
+func detectMIMEType(source domain.SourceFile) string {
 	if mimeType := strings.TrimSpace(source.MimeType); mimeType != "" {
 		return mimeType
 	}
@@ -190,7 +190,7 @@ func detectMIMEType(source pipeline.SourceFile) string {
 	return "application/octet-stream"
 }
 
-func detectDisplayName(source pipeline.SourceFile) string {
+func detectDisplayName(source domain.SourceFile) string {
 	if name := strings.TrimSpace(source.Filename); name != "" {
 		return name
 	}

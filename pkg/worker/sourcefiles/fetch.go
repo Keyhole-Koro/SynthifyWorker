@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 )
 
-func EnsureFetched(ctx context.Context, files []pipeline.SourceFile) ([]pipeline.SourceFile, error) {
-	out := make([]pipeline.SourceFile, len(files))
+func EnsureFetched(ctx context.Context, files []domain.SourceFile) ([]domain.SourceFile, error) {
+	out := make([]domain.SourceFile, len(files))
 	copy(out, files)
 	for i := range out {
 		if err := Fetch(ctx, &out[i]); err != nil {
@@ -22,7 +22,7 @@ func EnsureFetched(ctx context.Context, files []pipeline.SourceFile) ([]pipeline
 	return out, nil
 }
 
-func Fetch(ctx context.Context, file *pipeline.SourceFile) error {
+func Fetch(ctx context.Context, file *domain.SourceFile) error {
 	if file == nil {
 		return fmt.Errorf("source file is nil")
 	}

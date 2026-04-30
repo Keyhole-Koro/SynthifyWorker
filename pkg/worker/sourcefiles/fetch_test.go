@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 )
 
 func TestFetchCachesContent(t *testing.T) {
@@ -19,7 +19,7 @@ func TestFetchCachesContent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	file := pipeline.SourceFile{Filename: "sample.txt", URI: server.URL}
+	file := domain.SourceFile{Filename: "sample.txt", URI: server.URL}
 	if err := Fetch(context.Background(), &file); err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}

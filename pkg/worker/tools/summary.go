@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
 
 type SummaryArgs struct {
-	Item pipeline.SynthesizedItem `json:"item"`
+	Item domain.SynthesizedItem `json:"item"`
 }
 
 type SummaryResult struct {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/synthify/backend/worker/pkg/worker/pipeline"
+	"github.com/Keyhole-Koro/SynthifyShared/domain"
 )
 
 type Client interface {
@@ -15,12 +15,12 @@ type Client interface {
 type StructuredRequest struct {
 	SystemPrompt string
 	UserPrompt   string
-	SourceFiles  []pipeline.SourceFile
+	SourceFiles  []domain.SourceFile
 	Schema       any
 }
 
 type TextRequest struct {
 	SystemPrompt string
 	UserPrompt   string
-	SourceFiles  []pipeline.SourceFile
+	SourceFiles  []domain.SourceFile
 }
