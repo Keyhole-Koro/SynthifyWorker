@@ -51,10 +51,12 @@ func NewWorker(repo Repository, m model.LLM, embedder base.Embedder, llmClient b
 }
 
 func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM, embedder base.Embedder, llmClient base.LLMClient) (*Worker, error) {
+	usage := base.NewUsageLimiter(treeRepo)
 	b := &base.Context{
 		Repo:     treeRepo,
 		Embedder: embedder,
-		LLM:      llmClient,
+		LLM:      base.NewCountingLLMClient(llmClient, usage),
+		Usage:    usage,
 	}
 	orch, err := agents.NewOrchestrator(m, b, repo)
 	if err != nil {
@@ -292,4 +294,3 @@ func (d *HTTPDispatcher) httpClient(ctx context.Context) (*http.Client, error) {
 	}
 	return idtoken.NewClient(ctx, baseURL)
 }
-

@@ -33,6 +33,9 @@ func NewPersistenceTool(b *base.Context) (tool.Tool, error) {
 		if b == nil || b.Repo == nil {
 			return PersistenceResult{}, fmt.Errorf("repository is not configured")
 		}
+		if err := b.IncrementItemCreations(ctx, len(args.Items)); err != nil {
+			return PersistenceResult{}, err
+		}
 		capability, ok := b.Repo.GetJobCapability(ctx, args.JobID)
 		if !ok || capability == nil {
 			return PersistenceResult{}, fmt.Errorf("job capability not found: %s", args.JobID)

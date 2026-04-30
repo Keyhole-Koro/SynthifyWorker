@@ -41,7 +41,36 @@ type Context struct {
 	Repo     Repository
 	Embedder Embedder
 	LLM      LLMClient
+	Usage    *UsageLimiter
 	Memories []PromptMemory
+}
+
+func (b *Context) BeginJob(ctx context.Context, jobID string) {
+	if b == nil || b.Usage == nil {
+		return
+	}
+	b.Usage.BeginJob(ctx, jobID)
+}
+
+func (b *Context) IncrementLLMCalls(ctx context.Context) error {
+	if b == nil || b.Usage == nil {
+		return nil
+	}
+	return b.Usage.IncrementLLMCalls(ctx)
+}
+
+func (b *Context) IncrementToolRuns(ctx context.Context) error {
+	if b == nil || b.Usage == nil {
+		return nil
+	}
+	return b.Usage.IncrementToolRuns(ctx)
+}
+
+func (b *Context) IncrementItemCreations(ctx context.Context, count int) error {
+	if b == nil || b.Usage == nil {
+		return nil
+	}
+	return b.Usage.IncrementItemCreations(ctx, count)
 }
 
 // RenderWorkingMemory concatenates all PromptMemory blocks into a single

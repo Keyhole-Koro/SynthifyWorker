@@ -20,8 +20,9 @@ import (
 )
 
 type Orchestrator struct {
-	agent     agent.Agent
+	agent        agent.Agent
 	currentJobID atomic.Pointer[string]
+	base         *base.Context
 }
 
 // ToolLogger matches the repository interface for logging tool calls.
@@ -101,7 +102,7 @@ func NewOrchestrator(m model.LLM, b *base.Context, repo any) (*Orchestrator, err
 		return nil, err
 	}
 
-	orch := &Orchestrator{}
+	orch := &Orchestrator{base: b}
 
 	a, err := llmagent.New(llmagent.Config{
 		Name:  "orchestrator",
@@ -135,6 +136,9 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 		},
 		BeforeModelCallbacks: []llmagent.BeforeModelCallback{
 			func(ctx agent.CallbackContext, req *model.LLMRequest) (*model.LLMResponse, error) {
+				if err := b.IncrementLLMCalls(ctx); err != nil {
+					return nil, err
+				}
 				workingMemory := b.RenderWorkingMemory()
 				if req.Config == nil {
 					req.Config = &genai.GenerateContentConfig{}
@@ -147,6 +151,14 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 						existing += part.Text
 					}
 					req.Config.SystemInstruction = genai.NewContentFromText(existing+"\n\n"+workingMemory, "system")
+				}
+				return nil, nil
+			},
+		},
+		BeforeToolCallbacks: []llmagent.BeforeToolCallback{
+			func(ctx tool.Context, t tool.Tool, args map[string]any) (map[string]any, error) {
+				if err := b.IncrementToolRuns(ctx); err != nil {
+					return nil, err
 				}
 				return nil, nil
 			},
@@ -186,6 +198,9 @@ func (o *Orchestrator) Agent() agent.Agent {
 func (o *Orchestrator) ProcessDocument(ctx context.Context, runner *runner.Runner, jobID, documentID, workspaceID, fileURI, filename, mimeType string) error {
 	if runner == nil {
 		return fmt.Errorf("runner is not configured")
+	}
+	if o.base != nil {
+		o.base.BeginJob(ctx, jobID)
 	}
 	o.currentJobID.Store(&jobID)
 	msg := fmt.Sprintf(
