@@ -1,10 +1,10 @@
-package tools
+package process
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	"github.com/synthify/backend/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -22,12 +22,12 @@ func NewSummaryTool() (tool.Tool, error) {
 		Name:        "generate_html_summary",
 		Description: "Generates a formatted HTML summary for a specific knowledge tree item.",
 	}, func(ctx tool.Context, args SummaryArgs) (SummaryResult, error) {
-		description := strings.TrimSpace(args.Item.Description)
+		description := args.Item.Description
 		if description == "" {
 			description = args.Item.Label
 		}
 		return SummaryResult{
-			HTML: fmt.Sprintf("<p><strong>%s</strong>: %s</p>", htmlEscape(args.Item.Label), htmlEscape(description)),
+			HTML: fmt.Sprintf("<p><strong>%s</strong>: %s</p>", base.HtmlEscape(args.Item.Label), base.HtmlEscape(description)),
 		}, nil
 	})
 }

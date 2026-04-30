@@ -1,4 +1,4 @@
-package tools
+package io
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"github.com/Keyhole-Koro/SynthifyShared/pipeline"
+	"github.com/synthify/backend/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -20,10 +21,7 @@ type ChunkingResult struct {
 	Outline []string       `json:"outline"`
 }
 
-// NewChunkingTool splits raw document text into coarse semantic chunks.
-// Input schema: ChunkingArgs{document_id: string, raw_text: string}.
-// Output schema: ChunkingResult{chunks: []domain.Chunk, outline: []string}.
-func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
+func NewChunkingTool(b *base.Context) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "semantic_chunking",
 		Description: "Splits raw document text into semantically coherent chunks and generates an outline.",
@@ -44,13 +42,14 @@ func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 			chunks = append(chunks, domain.Chunk{ChunkIndex: i, Heading: heading, Text: section.Text})
 			outline = append(outline, heading)
 		}
-		if base != nil && base.Repo != nil {
-			if base.Embedder == nil {
+
+		if b != nil && b.Repo != nil {
+			if b.Embedder == nil {
 				return ChunkingResult{}, fmt.Errorf("embedder is required: configure GEMINI_API_KEY")
 			}
 			domainChunks := make([]*domain.DocumentChunk, 0, len(chunks))
 			for _, chunk := range chunks {
-				vec, err := base.Embedder.EmbedText(ctx, chunk.Heading+" "+chunk.Text)
+				vec, err := b.Embedder.EmbedText(ctx, chunk.Heading+" "+chunk.Text)
 				if err != nil {
 					return ChunkingResult{}, fmt.Errorf("embed chunk %d: %w", chunk.ChunkIndex, err)
 				}
@@ -62,7 +61,7 @@ func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 					Embedding:  vec.Slice(),
 				})
 			}
-			if err := base.Repo.SaveDocumentChunks(ctx, args.DocumentID, domainChunks); err != nil {
+			if err := b.Repo.SaveDocumentChunks(ctx, args.DocumentID, domainChunks); err != nil {
 				return ChunkingResult{}, fmt.Errorf("save chunks: %w", err)
 			}
 		}

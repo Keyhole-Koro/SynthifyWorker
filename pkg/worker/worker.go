@@ -20,7 +20,7 @@ import (
 	"github.com/synthify/backend/worker/pkg/worker/llm"
 	"github.com/synthify/backend/worker/pkg/worker/pipeline"
 	"github.com/synthify/backend/worker/pkg/worker/sourcefiles"
-	"github.com/synthify/backend/worker/pkg/worker/tools"
+	"github.com/synthify/backend/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/runner"
@@ -47,7 +47,7 @@ type Worker struct {
 	repo         Repository
 	status       jobstatus.Notifier
 	runner       *runner.Runner
-	embedder     tools.Embedder
+	embedder     base.Embedder
 }
 
 type ExecutePlanRequest = domain.ExecutePlanRequest
@@ -56,14 +56,12 @@ func NewWorker(repo Repository, m model.LLM) (*Worker, error) {
 	return NewWorkerWithNotifier(repo, repo, nil, m, nil)
 }
 
-func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM, embedder tools.Embedder) (*Worker, error) {
-	base := &tools.BaseContext{
+func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM, embedder base.Embedder) (*Worker, error) {
+	b := &base.Context{
 		Repo:     treeRepo,
 		Embedder: embedder,
-		Glossary: tools.NewMemoryGlossary(),
-		Journal:  tools.NewMemoryJournal(),
 	}
-	orch, err := agents.NewOrchestrator(m, base, repo)
+	orch, err := agents.NewOrchestrator(m, b, repo)
 	if err != nil {
 		return nil, err
 	}

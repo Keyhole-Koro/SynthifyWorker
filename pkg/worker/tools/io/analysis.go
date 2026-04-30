@@ -1,4 +1,4 @@
-package tools
+package io
 
 import (
 	"fmt"
@@ -32,9 +32,6 @@ type section struct {
 	Index int
 }
 
-// NewAnalysisTool infers coarse processing dependencies from an outline.
-// Input schema: AnalysisArgs{outline: []string}.
-// Output schema: AnalysisResult{dependencies: []Dependency, priorities: []string}.
 func NewAnalysisTool() (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "analyze_dependencies",
@@ -111,8 +108,7 @@ func inferDependencies(sections []section) []Dependency {
 func findParentSection(sections []section, index int) *section {
 	current := sections[index]
 	for i := index - 1; i >= 0; i-- {
-		candidate := sections[i]
-		if candidate.Level < current.Level {
+		if sections[i].Level < current.Level {
 			return &sections[i]
 		}
 	}
@@ -122,10 +118,7 @@ func findParentSection(sections []section, index int) *section {
 func findSemanticPrerequisite(sections []section, index int) *section {
 	current := sections[index]
 	title := strings.ToLower(current.Title)
-	if isFoundational(title) {
-		return nil
-	}
-	if !needsPrerequisite(title) {
+	if isFoundational(title) || !needsPrerequisite(title) {
 		return nil
 	}
 	bestIndex := -1
@@ -134,8 +127,7 @@ func findSemanticPrerequisite(sections []section, index int) *section {
 		if i == index {
 			continue
 		}
-		candidateTitle := strings.ToLower(sections[i].Title)
-		if !isFoundational(candidateTitle) {
+		if !isFoundational(strings.ToLower(sections[i].Title)) {
 			continue
 		}
 		distance := index - i
@@ -157,19 +149,15 @@ func findSemanticPrerequisite(sections []section, index int) *section {
 }
 
 func isFoundational(title string) bool {
-	keywords := []string{
-		"overview", "introduction", "background", "definition", "definitions",
-		"concept", "concepts", "terminology", "architecture", "context",
-	}
+	keywords := []string{"overview", "introduction", "background", "definition", "definitions",
+		"concept", "concepts", "terminology", "architecture", "context"}
 	return containsAny(title, keywords)
 }
 
 func needsPrerequisite(title string) bool {
-	keywords := []string{
-		"usage", "workflow", "example", "examples", "implementation", "deployment",
+	keywords := []string{"usage", "workflow", "example", "examples", "implementation", "deployment",
 		"configuration", "operation", "operations", "integration", "advanced",
-		"troubleshooting", "how to", "guide",
-	}
+		"troubleshooting", "how to", "guide"}
 	return containsAny(title, keywords)
 }
 
@@ -195,9 +183,9 @@ func sortByPriority(sections []section, dependencies []Dependency) []string {
 	indegree := make(map[string]int, len(sections))
 	graph := make(map[string][]string, len(sections))
 	byID := make(map[string]section, len(sections))
-	for _, section := range sections {
-		indegree[section.ID] = 0
-		byID[section.ID] = section
+	for _, s := range sections {
+		indegree[s.ID] = 0
+		byID[s.ID] = s
 	}
 	for _, dep := range dependencies {
 		graph[dep.DependsOn] = append(graph[dep.DependsOn], dep.TaskID)
@@ -205,9 +193,9 @@ func sortByPriority(sections []section, dependencies []Dependency) []string {
 	}
 
 	var ready []section
-	for _, section := range sections {
-		if indegree[section.ID] == 0 {
-			ready = append(ready, section)
+	for _, s := range sections {
+		if indegree[s.ID] == 0 {
+			ready = append(ready, s)
 		}
 	}
 	sort.Slice(ready, func(i, j int) bool { return ready[i].Index < ready[j].Index })
@@ -217,7 +205,6 @@ func sortByPriority(sections []section, dependencies []Dependency) []string {
 		current := ready[0]
 		ready = ready[1:]
 		priorities = append(priorities, current.Title)
-
 		for _, nextID := range graph[current.ID] {
 			indegree[nextID]--
 			if indegree[nextID] == 0 {
@@ -229,8 +216,8 @@ func sortByPriority(sections []section, dependencies []Dependency) []string {
 
 	if len(priorities) != len(sections) {
 		priorities = priorities[:0]
-		for _, section := range sections {
-			priorities = append(priorities, section.Title)
+		for _, s := range sections {
+			priorities = append(priorities, s.Title)
 		}
 	}
 	return priorities

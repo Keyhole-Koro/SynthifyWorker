@@ -1,10 +1,11 @@
-package tools
+package io
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	"github.com/synthify/backend/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -21,10 +22,7 @@ type PersistenceResult struct {
 	Message string `json:"message"`
 }
 
-// NewPersistenceTool writes synthesized items into the backing repository.
-// Input schema: PersistenceArgs{job_id: string, document_id: string, workspace_id: string, items: []domain.SynthesizedItem}.
-// Output schema: PersistenceResult{success: bool, message: string}.
-func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
+func NewPersistenceTool(b *base.Context) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "persist_knowledge_tree",
 		Description: "Permanently saves the synthesized knowledge tree items to the database.",
@@ -32,16 +30,16 @@ func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
 		if len(args.Items) == 0 {
 			return PersistenceResult{Success: false, Message: "No items to persist"}, nil
 		}
-		if base == nil || base.Repo == nil {
+		if b == nil || b.Repo == nil {
 			return PersistenceResult{}, fmt.Errorf("repository is not configured")
 		}
-		capability, ok := base.Repo.GetJobCapability(ctx, args.JobID)
+		capability, ok := b.Repo.GetJobCapability(ctx, args.JobID)
 		if !ok || capability == nil {
 			return PersistenceResult{}, fmt.Errorf("job capability not found: %s", args.JobID)
 		}
 
 		itemIDs := make(map[string]string, len(args.Items))
-		rootID, _ := base.Repo.GetWorkspaceRootItemID(ctx, args.WorkspaceID)
+		rootID, _ := b.Repo.GetWorkspaceRootItemID(ctx, args.WorkspaceID)
 		created := 0
 		for _, item := range args.Items {
 			parentID := rootID
@@ -52,7 +50,7 @@ func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
 			if label == "" {
 				label = item.LocalID
 			}
-			createdItem := base.Repo.CreateStructuredItemWithCapability(
+			createdItem := b.Repo.CreateStructuredItemWithCapability(
 				ctx,
 				capability,
 				args.JobID,
@@ -71,13 +69,12 @@ func NewPersistenceTool(base *BaseContext) (tool.Tool, error) {
 			}
 			itemIDs[item.LocalID] = createdItem.ItemID
 			for _, chunkID := range item.SourceChunkIDs {
-				if err := base.Repo.UpsertItemSource(ctx, createdItem.ItemID, args.DocumentID, chunkID, item.Description, 0.75); err != nil {
+				if err := b.Repo.UpsertItemSource(ctx, createdItem.ItemID, args.DocumentID, chunkID, item.Description, 0.75); err != nil {
 					return PersistenceResult{}, err
 				}
 			}
 			created++
 		}
-
 		return PersistenceResult{Success: true, Message: fmt.Sprintf("Successfully persisted %d items", created)}, nil
 	})
 }

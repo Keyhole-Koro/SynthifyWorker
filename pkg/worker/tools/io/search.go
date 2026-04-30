@@ -1,8 +1,9 @@
-package tools
+package io
 
 import (
 	"fmt"
 
+	"github.com/synthify/backend/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -24,23 +25,23 @@ type SearchResultItem struct {
 	Score      float64 `json:"score"`
 }
 
-func NewSearchTool(base *BaseContext) (tool.Tool, error) {
+func NewSearchTool(b *base.Context) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "semantic_search",
 		Description: "Performs workspace-wide RAG. Finds relevant information across the current document or all documents in the same workspace.",
 	}, func(ctx tool.Context, args SearchArgs) (SearchResult, error) {
-		if base == nil || base.Repo == nil {
+		if b == nil || b.Repo == nil {
 			return SearchResult{}, fmt.Errorf("repository is not configured")
 		}
-		if base.Embedder == nil {
+		if b.Embedder == nil {
 			return SearchResult{}, fmt.Errorf("embedder is required: configure GEMINI_API_KEY")
 		}
 
-		vec, err := base.Embedder.EmbedText(ctx, args.Query)
+		vec, err := b.Embedder.EmbedText(ctx, args.Query)
 		if err != nil {
 			return SearchResult{}, fmt.Errorf("embed query: %w", err)
 		}
-		chunks, err := base.Repo.SearchRelatedChunksByVector(ctx, args.WorkspaceID, vec.Slice(), 8)
+		chunks, err := b.Repo.SearchRelatedChunksByVector(ctx, args.WorkspaceID, vec.Slice(), 8)
 		if err != nil {
 			return SearchResult{}, fmt.Errorf("vector search: %w", err)
 		}

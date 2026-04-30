@@ -1,4 +1,4 @@
-package tools
+package io
 
 import (
 	"bytes"
@@ -52,7 +52,6 @@ func repairEncoding(text string) string {
 		}
 	}
 
-	// Strip invalid UTF-8 bytes as last resort
 	var buf bytes.Buffer
 	for i := 0; i < len(raw); {
 		r, size := utf8.DecodeRune(raw[i:])
@@ -64,13 +63,11 @@ func repairEncoding(text string) string {
 	return buf.String()
 }
 
-// looksLikeMojibake returns true if the string has an unusually high ratio of
-// replacement characters, suggesting garbled encoding.
 func looksLikeMojibake(s string) bool {
 	if len(s) == 0 {
 		return false
 	}
-	replacements := strings.Count(s, "�")
+	replacements := strings.Count(s, "")
 	return float64(replacements)/float64(utf8.RuneCountInString(s)) > 0.1
 }
 
