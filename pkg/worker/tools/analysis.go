@@ -2,10 +2,10 @@ package tools
 
 import (
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/Keyhole-Koro/SynthifyShared/pipeline"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -31,8 +31,6 @@ type section struct {
 	Level int
 	Index int
 }
-
-var numberedHeadingPattern = regexp.MustCompile(`^\s*(\d+(?:\.\d+)*)[\.\):]?\s+`)
 
 // NewAnalysisTool infers coarse processing dependencies from an outline.
 // Input schema: AnalysisArgs{outline: []string}.
@@ -83,7 +81,7 @@ func detectHeadingLevel(title string) int {
 			return level
 		}
 	}
-	if matches := numberedHeadingPattern.FindStringSubmatch(trimmed); len(matches) == 2 {
+	if matches := pipeline.NumberedHeadingPattern.FindStringSubmatch(trimmed); len(matches) == 2 {
 		return strings.Count(matches[1], ".") + 1
 	}
 	return 1

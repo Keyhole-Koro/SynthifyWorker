@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	connect "connectrpc.com/connect"
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
@@ -118,17 +117,4 @@ func (h *ConnectHandler) EvaluateJobArtifact(ctx context.Context, req *connect.R
 		Findings:      result.Findings,
 		MutationCount: result.MutationCount,
 	}), nil
-}
-
-func RequireWorkerToken(token string, next http.Handler) http.Handler {
-	if token == "" {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-Worker-Token") != token {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

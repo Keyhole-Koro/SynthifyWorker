@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"regexp"
 	"strings"
 
 	connect "connectrpc.com/connect"
@@ -14,6 +13,7 @@ import (
 	treev1 "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1"
 	treev1connect "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1/treev1connect"
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
+	sharedpipeline "github.com/Keyhole-Koro/SynthifyShared/pipeline"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/Keyhole-Koro/SynthifyShared/util"
 	"github.com/synthify/backend/worker/pkg/worker/agents"
@@ -27,8 +27,6 @@ import (
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
-
-var workerNumberedHeadingPattern = regexp.MustCompile(`^\s*(\d+(?:\.\d+)*)[\.\):]?\s+`)
 
 var (
 	ErrApprovalRequired = domain.ErrApprovalRequired
@@ -156,7 +154,7 @@ func (w *Worker) processDocument(ctx context.Context, req ExecutePlanRequest, pa
 		w.status.StageProgress(ctx, payload, string(pipeline.StageSemanticChunking), 35, "Chunking document")
 	}
 	w.repo.UpdateProcessingJobStage(ctx, req.JobID, string(pipeline.StageSemanticChunking))
-	chunks := buildChunks(req.DocumentID, rawText)
+	chunks := sharedpipeline.BuildChunks(req.DocumentID, rawText)
 	if len(chunks) == 0 {
 		return fmt.Errorf("document produced no chunks")
 	}
@@ -428,45 +426,6 @@ func (d *HTTPDispatcher) ExecuteApprovedPlan(ctx context.Context, req ExecutePla
 	return err
 }
 
-func buildChunks(documentID, rawText string) []*domain.DocumentChunk {
-	const maxRunes = 3500
-	text := strings.TrimSpace(rawText)
-	if text == "" {
-		return nil
-	}
-	var chunks []*domain.DocumentChunk
-	var b strings.Builder
-	heading := "Introduction"
-	flush := func() {
-		body := strings.TrimSpace(b.String())
-		if body == "" {
-			return
-		}
-		index := len(chunks)
-		chunks = append(chunks, &domain.DocumentChunk{
-			ChunkID:    fmt.Sprintf("%s_chunk_%d", documentID, index),
-			DocumentID: documentID,
-			Heading:    heading,
-			Text:       body,
-		})
-		b.Reset()
-	}
-	for _, line := range strings.Split(text, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if isHeadingLine(trimmed) && b.Len() > 0 {
-			flush()
-			heading = strings.Trim(strings.TrimSpace(trimmed), "#: ")
-		}
-		if b.Len()+len(line) > maxRunes {
-			flush()
-		}
-		b.WriteString(line)
-		b.WriteByte('\n')
-	}
-	flush()
-	return chunks
-}
-
 func synthesizeItems(documentID string, chunks []*domain.DocumentChunk) []domain.SynthesizedItem {
 	items := make([]domain.SynthesizedItem, 0, len(chunks))
 	for i, chunk := range chunks {
@@ -485,11 +444,4 @@ func synthesizeItems(documentID string, chunks []*domain.DocumentChunk) []domain
 		})
 	}
 	return items
-}
-
-func isHeadingLine(line string) bool {
-	if line == "" || len([]rune(line)) > 120 {
-		return false
-	}
-	return strings.HasPrefix(line, "#") || workerNumberedHeadingPattern.MatchString(line) || (strings.HasSuffix(line, ":") && len(strings.Fields(line)) <= 8)
 }

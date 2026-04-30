@@ -3,9 +3,9 @@ package tools
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	"github.com/Keyhole-Koro/SynthifyShared/pipeline"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -33,15 +33,15 @@ func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 			return ChunkingResult{}, nil
 		}
 
-		sections := splitSections(text)
+		sections := pipeline.SplitSections(text)
 		chunks := make([]domain.Chunk, 0, len(sections))
 		outline := make([]string, 0, len(sections))
 		for i, section := range sections {
-			heading := section.heading
+			heading := section.Heading
 			if heading == "" {
 				heading = fmt.Sprintf("Section %d", i+1)
 			}
-			chunks = append(chunks, domain.Chunk{ChunkIndex: i, Heading: heading, Text: section.text})
+			chunks = append(chunks, domain.Chunk{ChunkIndex: i, Heading: heading, Text: section.Text})
 			outline = append(outline, heading)
 		}
 		if base != nil && base.Repo != nil {
@@ -68,63 +68,4 @@ func NewChunkingTool(base *BaseContext) (tool.Tool, error) {
 		}
 		return ChunkingResult{Chunks: chunks, Outline: outline}, nil
 	})
-}
-
-type textSection struct {
-	heading string
-	text    string
-}
-
-func splitSections(text string) []textSection {
-	const maxRunes = 3500
-	var sections []textSection
-	var currentHeading string
-	var current strings.Builder
-
-	flush := func() {
-		body := strings.TrimSpace(current.String())
-		if body == "" {
-			return
-		}
-		sections = append(sections, textSection{heading: currentHeading, text: body})
-		current.Reset()
-	}
-
-	for _, line := range strings.Split(text, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if looksLikeHeading(trimmed) && current.Len() > 0 {
-			flush()
-			currentHeading = normalizeHeading(trimmed)
-		}
-		if currentHeading == "" && looksLikeHeading(trimmed) {
-			currentHeading = normalizeHeading(trimmed)
-		}
-		if utf8.RuneCountInString(current.String())+utf8.RuneCountInString(line) > maxRunes {
-			flush()
-		}
-		current.WriteString(line)
-		current.WriteByte('\n')
-	}
-	flush()
-	if len(sections) == 0 {
-		sections = append(sections, textSection{heading: "Introduction", text: text})
-	}
-	return sections
-}
-
-func looksLikeHeading(line string) bool {
-	if line == "" || len([]rune(line)) > 120 {
-		return false
-	}
-	if strings.HasPrefix(line, "#") {
-		return true
-	}
-	if numberedHeadingPattern.MatchString(line) {
-		return true
-	}
-	return strings.HasSuffix(line, ":") && len(strings.Fields(line)) <= 8
-}
-
-func normalizeHeading(line string) string {
-	return strings.Trim(strings.TrimSpace(line), "#: ")
 }
