@@ -6,7 +6,6 @@ import (
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"github.com/synthify/backend/worker/pkg/worker/tools/base"
-	"github.com/synthify/backend/worker/pkg/worker/tools/memory"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -48,10 +47,3 @@ func NewSynthesisTool(b *base.Context) (tool.Tool, error) {
 	})
 }
 
-// GlossaryEntries extracts entries from a memory.Glossary for use in tool args.
-// Kept here as a convenience until synthesis is LLM-powered (entries will be
-// injected via the system prompt instead).
-func GlossaryEntries(g *memory.Glossary) []memory.Entry {
-	_ = g // placeholder — glossary is now injected via PromptMemory
-	return nil
-}

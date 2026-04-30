@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/synthify/backend/worker/pkg/worker/tools/base"
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
+	"google.golang.org/adk/runner"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 )
@@ -175,6 +177,21 @@ func (o *Orchestrator) Agent() agent.Agent {
 	return o.agent
 }
 
-func (o *Orchestrator) ProcessDocument(ctx context.Context, jobID, documentID, rawText string) (string, error) {
-	return "Orchestration started (ADK transition in progress)", nil
+func (o *Orchestrator) ProcessDocument(ctx context.Context, runner *runner.Runner, jobID, documentID, workspaceID, fileURI, filename, mimeType string) error {
+	if runner == nil {
+		return fmt.Errorf("runner is not configured")
+	}
+	msg := fmt.Sprintf(
+		"Process this document and build a knowledge tree.\n\njob_id: %s\ndocument_id: %s\nworkspace_id: %s\nfile_uri: %s\nfilename: %s\nmime_type: %s\n\nFollow your workflow: extract text, chunk, generate brief, synthesize items, critique, then persist.",
+		jobID, documentID, workspaceID, fileURI, filename, mimeType,
+	)
+	for event, err := range runner.Run(ctx, "worker", jobID, genai.NewContentFromText(msg, genai.RoleUser), agent.RunConfig{}) {
+		if err != nil {
+			return fmt.Errorf("agent run: %w", err)
+		}
+		if event != nil && event.IsFinalResponse() {
+			return nil
+		}
+	}
+	return nil
 }
