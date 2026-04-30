@@ -60,6 +60,7 @@ func NewPersistenceTool(b *base.Context) (tool.Tool, error) {
 				item.Level,
 				item.Description,
 				item.SummaryHTML,
+				item.OverrideCSS,
 				"llm_worker",
 				parentID,
 				item.SourceChunkIDs,

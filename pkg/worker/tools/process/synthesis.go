@@ -65,7 +65,13 @@ Rules:
 - Assign local_id as "item_1", "item_2", etc.
 - level: 1 for root-level items, 2 for children, 3 for grandchildren.
 - description: concise explanation grounded in the source text. No hallucination.
-- summary_html: wrap the description in <p> tags. Use <strong> for key terms.
+- summary_html: 1-3 <p> paragraphs. Use <strong> for key terms.
+  Link to child items with <a data-paper-id="{local_id}">term</a> so readers can expand them inline.
+  You may also use <blockquote> for quotations, <table> for tabular data,
+  <div class="compare-grid"><div class="compare-col">...</div><div class="compare-col">...</div></div> for side-by-side comparisons,
+  and <div class="callout">...</div> for warnings or key takeaways.
+- override_css: optional CSS string to style this item's content. Use only when a custom layout
+  genuinely improves readability (e.g. defining .compare-grid or .callout). Leave empty otherwise.
 - source_chunk_ids: list of chunk IDs referenced (format: "{document_id}_chunk_{index}").
 - The document brief and glossary are in your system context — use them.`,
 		UserPrompt: fmt.Sprintf("document_id: %s\nInstruction: %s\n\nChunks:\n%s", args.DocumentID, instruction, sb.String()),
