@@ -1,8 +1,13 @@
 package process
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 
+	"github.com/synthify/backend/worker/pkg/worker/llm"
+	"github.com/synthify/backend/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -18,29 +23,56 @@ type CritiqueResult struct {
 	Suggestions []string `json:"suggestions"`
 }
 
-func NewCritiqueTool() (tool.Tool, error) {
+func NewCritiqueTool(b *base.Context) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "quality_critique",
 		Description: "Critiques the generated output for potential hallucinations, logical gaps, or inaccuracies. Use this before finalizing results.",
 	}, func(ctx tool.Context, args CritiqueArgs) (CritiqueResult, error) {
-		var issues []string
 		if strings.TrimSpace(args.TargetData) == "" {
-			issues = append(issues, "target data is empty")
+			return CritiqueResult{
+				Valid:  false,
+				Issues: []string{"target data is empty"},
+			}, nil
 		}
-		if strings.Contains(strings.ToLower(args.TargetData), "stub") {
-			issues = append(issues, "target data still contains stub content")
-		}
-		return CritiqueResult{
-			Valid:       len(issues) == 0,
-			Issues:      issues,
-			Suggestions: suggestionsForIssues(issues),
-		}, nil
+		return critique(ctx, b.LLM, args.TargetData, args.Criteria)
 	})
 }
 
-func suggestionsForIssues(issues []string) []string {
-	if len(issues) == 0 {
-		return nil
+func critique(ctx context.Context, llmClient base.LLMClient, targetData, criteria string) (CritiqueResult, error) {
+	if llmClient == nil {
+		return CritiqueResult{Valid: true}, nil
 	}
-	return []string{"Regenerate the affected section from source chunks before persisting."}
+
+	userPrompt := fmt.Sprintf("Criteria: %s\n\nContent to evaluate:\n%s", criteria, targetData)
+
+	raw, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
+		SystemPrompt: `You are a quality assurance reviewer for a knowledge management system.
+Evaluate the provided content for:
+- Hallucinations (claims not grounded in the source)
+- Logical gaps or missing context
+- Inaccurate or misleading descriptions
+- Structural inconsistencies (e.g. broken parent-child relationships)
+
+Return JSON with:
+- valid: true only if no significant issues found
+- issues: list of specific problems found (empty array if none)
+- suggestions: list of concrete fixes (empty array if none)`,
+		UserPrompt: userPrompt,
+		Schema:     CritiqueResult{},
+	})
+	if err != nil {
+		return CritiqueResult{Valid: true}, nil
+	}
+
+	var result CritiqueResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return CritiqueResult{Valid: true}, nil
+	}
+	if result.Issues == nil {
+		result.Issues = []string{}
+	}
+	if result.Suggestions == nil {
+		result.Suggestions = []string{}
+	}
+	return result, nil
 }

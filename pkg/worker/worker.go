@@ -46,14 +46,15 @@ type Worker struct {
 
 type ExecutePlanRequest = domain.ExecutePlanRequest
 
-func NewWorker(repo Repository, m model.LLM, embedder base.Embedder) (*Worker, error) {
-	return NewWorkerWithNotifier(repo, repo, nil, m, embedder)
+func NewWorker(repo Repository, m model.LLM, embedder base.Embedder, llmClient base.LLMClient) (*Worker, error) {
+	return NewWorkerWithNotifier(repo, repo, nil, m, embedder, llmClient)
 }
 
-func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM, embedder base.Embedder) (*Worker, error) {
+func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM, embedder base.Embedder, llmClient base.LLMClient) (*Worker, error) {
 	b := &base.Context{
 		Repo:     treeRepo,
 		Embedder: embedder,
+		LLM:      llmClient,
 	}
 	orch, err := agents.NewOrchestrator(m, b, repo)
 	if err != nil {

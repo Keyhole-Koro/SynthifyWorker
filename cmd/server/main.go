@@ -42,7 +42,7 @@ func main() {
 		log.Printf("Gemini API key not configured; worker will use deterministic fallback processing")
 	}
 
-	workerService, err := worker.NewWorkerWithNotifier(store, store, notifier, adkModel, embedder)
+	workerService, err := worker.NewWorkerWithNotifier(store, store, notifier, adkModel, embedder, embedder)
 	if err != nil {
 		log.Fatal(err)
 	}

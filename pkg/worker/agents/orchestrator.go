@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/synthify/backend/worker/pkg/worker/tools/base"
@@ -19,7 +20,8 @@ import (
 )
 
 type Orchestrator struct {
-	agent agent.Agent
+	agent     agent.Agent
+	currentJobID atomic.Pointer[string]
 }
 
 // ToolLogger matches the repository interface for logging tool calls.
@@ -66,7 +68,7 @@ func NewOrchestrator(m model.LLM, b *base.Context, repo any) (*Orchestrator, err
 	if err != nil {
 		return nil, err
 	}
-	critique, err := process.NewCritiqueTool()
+	critique, err := process.NewCritiqueTool(b)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,7 @@ func NewOrchestrator(m model.LLM, b *base.Context, repo any) (*Orchestrator, err
 	if err != nil {
 		return nil, err
 	}
-	merge, err := process.NewMergeTool()
+	merge, err := process.NewMergeTool(b)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +92,7 @@ func NewOrchestrator(m model.LLM, b *base.Context, repo any) (*Orchestrator, err
 	if err != nil {
 		return nil, err
 	}
-	briefing, err := process.NewBriefTool(brief)
+	briefing, err := process.NewBriefTool(b, brief)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +100,8 @@ func NewOrchestrator(m model.LLM, b *base.Context, repo any) (*Orchestrator, err
 	if err != nil {
 		return nil, err
 	}
+
+	orch := &Orchestrator{}
 
 	a, err := llmagent.New(llmagent.Config{
 		Name:  "orchestrator",
@@ -150,14 +154,15 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 		AfterToolCallbacks: []llmagent.AfterToolCallback{
 			func(ctx tool.Context, t tool.Tool, args, result map[string]any, err error) (map[string]any, error) {
 				start := time.Now()
-				jobID, _ := args["job_id"].(string)
 				argJSON, _ := json.Marshal(args)
 				resJSON, _ := json.Marshal(result)
 				if err != nil {
 					resJSON, _ = json.Marshal(map[string]string{"error": err.Error()})
 				}
-				if logger, ok := repo.(ToolLogger); ok && jobID != "" {
-					_ = logger.LogToolCall(context.Background(), jobID, t.Name(), string(argJSON), string(resJSON), time.Since(start).Milliseconds())
+				if logger, ok := repo.(ToolLogger); ok {
+					if p := orch.currentJobID.Load(); p != nil && *p != "" {
+						_ = logger.LogToolCall(context.Background(), *p, t.Name(), string(argJSON), string(resJSON), time.Since(start).Milliseconds())
+					}
 				}
 				return result, err
 			},
@@ -167,7 +172,8 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 		return nil, err
 	}
 
-	return &Orchestrator{agent: a}, nil
+	orch.agent = a
+	return orch, nil
 }
 
 func (o *Orchestrator) Agent() agent.Agent {
@@ -181,6 +187,7 @@ func (o *Orchestrator) ProcessDocument(ctx context.Context, runner *runner.Runne
 	if runner == nil {
 		return fmt.Errorf("runner is not configured")
 	}
+	o.currentJobID.Store(&jobID)
 	msg := fmt.Sprintf(
 		"Process this document and build a knowledge tree.\n\njob_id: %s\ndocument_id: %s\nworkspace_id: %s\nfile_uri: %s\nfilename: %s\nmime_type: %s\n\nFollow your workflow: extract text, chunk, generate brief, synthesize items, critique, then persist.",
 		jobID, documentID, workspaceID, fileURI, filename, mimeType,

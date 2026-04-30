@@ -2,13 +2,21 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	pgvector "github.com/pgvector/pgvector-go"
 
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
+	"github.com/synthify/backend/worker/pkg/worker/llm"
 	"google.golang.org/adk/tool"
 )
+
+// LLMClient is the interface for structured and text generation used by process tools.
+type LLMClient interface {
+	GenerateStructured(ctx context.Context, req llm.StructuredRequest) (json.RawMessage, error)
+	GenerateText(ctx context.Context, req llm.TextRequest) (string, error)
+}
 
 // Repository is the interface for data access required by tools.
 type Repository interface {
@@ -32,6 +40,7 @@ type PromptMemory interface {
 type Context struct {
 	Repo     Repository
 	Embedder Embedder
+	LLM      LLMClient
 	Memories []PromptMemory
 }
 
