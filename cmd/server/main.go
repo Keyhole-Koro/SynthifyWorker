@@ -9,7 +9,6 @@ import (
 	"github.com/Keyhole-Koro/SynthifyShared/app"
 	"github.com/Keyhole-Koro/SynthifyShared/config"
 	treev1connect "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1/treev1connect"
-	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/Keyhole-Koro/SynthifyShared/middleware"
 	"github.com/synthify/backend/worker/pkg/worker"
 	"github.com/synthify/backend/worker/pkg/worker/llm"
@@ -22,8 +21,9 @@ func main() {
 	ctx := context.Background()
 	cfg := config.LoadWorker()
 
-	store := app.InitStore(ctx, app.PublicUploadURLGenerator(cfg.GCSUploadURLBase))
-	notifier := jobstatus.NewNotifier(ctx, cfg.FirebaseProjectID)
+	appCtx := app.Bootstrap(ctx, cfg.GCSUploadURLBase, cfg.FirebaseProjectID)
+	store := appCtx.Store
+	notifier := appCtx.Notifier
 
 	var adkModel model.LLM
 	var embedder *llm.GeminiClient
