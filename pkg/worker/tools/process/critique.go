@@ -13,8 +13,8 @@ import (
 )
 
 type CritiqueArgs struct {
-	TargetData string `json:"target_data" jsonschema:"description=The generated content or structure to evaluate"`
-	Criteria   string `json:"criteria" jsonschema:"description=Specific aspects to look for errors or hallucination"`
+	TargetData string `json:"target_data"`
+	Criteria   string `json:"criteria"`
 }
 
 type CritiqueResult struct {

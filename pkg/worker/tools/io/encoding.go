@@ -17,7 +17,7 @@ import (
 )
 
 type RepairArgs struct {
-	Text string `json:"text" jsonschema:"description=Text that contains encoding issues or garbled characters"`
+	Text string `json:"text"`
 }
 
 type RepairResult struct {

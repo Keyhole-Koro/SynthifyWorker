@@ -17,8 +17,8 @@ type SynthesisArgs struct {
 	JobID       string         `json:"job_id"`
 	DocumentID  string         `json:"document_id"`
 	WorkspaceID string         `json:"workspace_id"`
-	Chunks      []domain.Chunk `json:"chunks" jsonschema:"description=The specific segments of text to analyze now"`
-	Instruction string         `json:"instruction,omitempty" jsonschema:"description=Specific focus or constraints for this synthesis call"`
+	Chunks      []domain.Chunk `json:"chunks"`
+	Instruction string         `json:"instruction,omitempty"`
 }
 
 type SynthesisResult struct {

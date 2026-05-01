@@ -12,8 +12,8 @@ import (
 )
 
 type ChunkingArgs struct {
-	DocumentID string `json:"document_id" jsonschema:"description=The unique identifier of the document to chunk"`
-	RawText    string `json:"raw_text" jsonschema:"description=The raw text extracted from the document"`
+	DocumentID string `json:"document_id"`
+	RawText    string `json:"raw_text"`
 }
 
 type ChunkingResult struct {

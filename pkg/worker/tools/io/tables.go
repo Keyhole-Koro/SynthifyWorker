@@ -9,12 +9,12 @@ import (
 )
 
 type TableArgs struct {
-	ChunkID string `json:"chunk_id" jsonschema:"description=The chunk containing a complex table"`
-	Text    string `json:"text,omitempty" jsonschema:"description=Raw chunk text when available"`
+	ChunkID string `json:"chunk_id"`
+	Text    string `json:"text,omitempty"`
 }
 
 type TableResult struct {
-	TableJSON string `json:"table_json" jsonschema:"description=Structured representation of the table"`
+	TableJSON string `json:"table_json"`
 }
 
 func NewTableTool() (tool.Tool, error) {

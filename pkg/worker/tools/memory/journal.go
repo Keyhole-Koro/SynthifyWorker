@@ -52,7 +52,7 @@ func (j *Journal) RenderForPrompt() string {
 
 type addArgs struct {
 	Description string   `json:"description"`
-	DependsOn   []string `json:"depends_on,omitempty" jsonschema:"description=IDs of tasks that must be completed before this one"`
+	DependsOn   []string `json:"depends_on,omitempty"`
 }
 
 type addResult struct {
@@ -80,7 +80,7 @@ func NewAddTaskTool(j *Journal) (tool.Tool, error) {
 
 type updateArgs struct {
 	TaskID string `json:"task_id"`
-	Status string `json:"status" jsonschema:"enum=pending,in_progress,completed"`
+	Status string `json:"status"`
 }
 
 type updateResult struct {

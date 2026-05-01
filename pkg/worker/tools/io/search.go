@@ -9,9 +9,9 @@ import (
 )
 
 type SearchArgs struct {
-	WorkspaceID string `json:"workspace_id" jsonschema:"description=The workspace to search within"`
-	Query       string `json:"query" jsonschema:"description=The question or concept to find"`
-	Scope       string `json:"scope" jsonschema:"enum=current_document,all_workspace,description=Whether to search only the current file or everything in the workspace"`
+	WorkspaceID string `json:"workspace_id"`
+	Query       string `json:"query"`
+	Scope       string `json:"scope"`
 }
 
 type SearchResult struct {

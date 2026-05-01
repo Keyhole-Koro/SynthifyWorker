@@ -11,18 +11,18 @@ import (
 )
 
 type Dependency struct {
-	TaskID    string `json:"task_id" jsonschema:"description=The ID of the task that has a dependency"`
-	DependsOn string `json:"depends_on" jsonschema:"description=The ID of the prerequisite task"`
-	Reason    string `json:"reason" jsonschema:"description=Why this dependency exists"`
+	TaskID    string `json:"task_id"`
+	DependsOn string `json:"depends_on"`
+	Reason    string `json:"reason"`
 }
 
 type AnalysisArgs struct {
-	Outline []string `json:"outline" jsonschema:"description=The list of section headings or chunk summaries"`
+	Outline []string `json:"outline"`
 }
 
 type AnalysisResult struct {
 	Dependencies []Dependency `json:"dependencies"`
-	Priorities   []string     `json:"priorities" jsonschema:"description=Recommended order of processing"`
+	Priorities   []string     `json:"priorities"`
 }
 
 type section struct {

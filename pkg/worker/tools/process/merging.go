@@ -19,7 +19,7 @@ type MergeCandidate struct {
 }
 
 type MergeArgs struct {
-	Items []MergeCandidate `json:"items" jsonschema:"description=Candidate items that may represent the same concept"`
+	Items []MergeCandidate `json:"items"`
 }
 
 type MergeResult struct {
