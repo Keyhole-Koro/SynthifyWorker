@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"log"
 
 	connect "connectrpc.com/connect"
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
@@ -33,6 +34,7 @@ func (h *ConnectHandler) GenerateExecutionPlan(ctx context.Context, req *connect
 	if req.Msg.GetJobId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))
 	}
+	log.Printf("worker: GenerateExecutionPlan received: job=%s doc=%s", req.Msg.GetJobId(), req.Msg.GetDocumentId())
 	plan, err := h.planner.GenerateExecutionPlan(ctx, ExecutePlanRequest{
 		JobID:       req.Msg.GetJobId(),
 		JobType:     req.Msg.GetJobType(),
@@ -65,6 +67,7 @@ func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.R
 		Filename:    req.Msg.GetFilename(),
 		MimeType:    req.Msg.GetMimeType(),
 	}
+	log.Printf("worker: ExecuteApprovedPlan received: job=%s doc=%s workspace=%s", req.Msg.GetJobId(), req.Msg.GetDocumentId(), req.Msg.GetWorkspaceId())
 	if err := dispatchReq.Validate(); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}

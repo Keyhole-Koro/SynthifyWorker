@@ -16,7 +16,7 @@ func EnsureFetched(ctx context.Context, files []domain.SourceFile) ([]domain.Sou
 	copy(out, files)
 	for i := range out {
 		if err := Fetch(ctx, &out[i]); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("fetch[%d] %s: %w", i, out[i].Filename, err)
 		}
 	}
 	return out, nil
@@ -35,11 +35,11 @@ func Fetch(ctx context.Context, file *domain.SourceFile) error {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, file.URI, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("create request %s: %w", file.URI, err)
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("http get %s: %w", file.URI, err)
 	}
 	defer res.Body.Close()
 
@@ -49,7 +49,7 @@ func Fetch(ctx context.Context, file *domain.SourceFile) error {
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("read body %s: %w", file.URI, err)
 	}
 	file.Content = body
 	if strings.TrimSpace(file.MimeType) == "" {

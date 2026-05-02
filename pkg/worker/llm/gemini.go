@@ -93,7 +93,7 @@ func (c *GeminiClient) GenerateText(ctx context.Context, req TextRequest) (strin
 func (c *GeminiClient) generate(ctx context.Context, systemPrompt, userPrompt string, sourceFiles []domain.SourceFile, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
 	contents, cleanup, err := c.buildContents(ctx, userPrompt, sourceFiles)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build contents: %w", err)
 	}
 	defer cleanup()
 	return c.client.Models.GenerateContent(ctx, c.model, contents, config)
@@ -123,7 +123,7 @@ func (c *GeminiClient) buildContents(ctx context.Context, userPrompt string, sou
 
 func (c *GeminiClient) uploadSourceFile(ctx context.Context, source domain.SourceFile) (*genai.File, error) {
 	if err := sourcefiles.Fetch(ctx, &source); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetch source file %s: %w", source.Filename, err)
 	}
 
 	mimeType := detectMIMEType(source)
@@ -149,7 +149,7 @@ func (c *GeminiClient) waitForFileActive(ctx context.Context, name string) error
 	for {
 		file, err := c.client.Files.Get(ctx, name, nil)
 		if err != nil {
-			return err
+			return fmt.Errorf("get file status %s: %w", name, err)
 		}
 		switch file.State {
 		case "", genai.FileStateActive:

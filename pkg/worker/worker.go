@@ -83,7 +83,7 @@ func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobsta
 
 func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 	if err := req.Validate(); err != nil {
-		return err
+		return fmt.Errorf("invalid request: %w", err)
 	}
 	log.Printf("LLM worker processing job %s (doc: %s)", req.JobID, req.DocumentID)
 
@@ -244,7 +244,7 @@ func NewHTTPDispatcher(baseURL string) *HTTPDispatcher {
 func (d *HTTPDispatcher) GenerateExecutionPlan(ctx context.Context, req ExecutePlanRequest) error {
 	httpClient, err := d.httpClient(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("http client: %w", err)
 	}
 	client := treev1connect.NewWorkerServiceClient(httpClient, strings.TrimRight(d.baseURL, "/"))
 	rpcReq := connect.NewRequest(&treev1.GenerateExecutionPlanRequest{
@@ -256,14 +256,16 @@ func (d *HTTPDispatcher) GenerateExecutionPlan(ctx context.Context, req ExecuteP
 		Filename:    req.Filename,
 		MimeType:    req.MimeType,
 	})
-	_, err = client.GenerateExecutionPlan(ctx, rpcReq)
-	return err
+	if _, err = client.GenerateExecutionPlan(ctx, rpcReq); err != nil {
+		return fmt.Errorf("GenerateExecutionPlan rpc: %w", err)
+	}
+	return nil
 }
 
 func (d *HTTPDispatcher) ExecuteApprovedPlan(ctx context.Context, req ExecutePlanRequest) error {
 	httpClient, err := d.httpClient(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("http client: %w", err)
 	}
 	client := treev1connect.NewWorkerServiceClient(httpClient, strings.TrimRight(d.baseURL, "/"))
 	rpcReq := connect.NewRequest(&treev1.ExecuteApprovedPlanRequest{

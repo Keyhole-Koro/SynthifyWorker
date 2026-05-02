@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
@@ -95,12 +96,15 @@ func (l *UsageLimiter) increment(ctx context.Context, llmCalls, toolRuns, itemCr
 		return nil
 	}
 	if capability.MaxLLMCalls > 0 && counters.llmCalls > capability.MaxLLMCalls {
+		log.Printf("usage limit exceeded: job=%s llm_calls=%d/%d", jobID, counters.llmCalls, capability.MaxLLMCalls)
 		return fmt.Errorf("job %s exceeded LLM call limit: %d > %d", jobID, counters.llmCalls, capability.MaxLLMCalls)
 	}
 	if capability.MaxToolRuns > 0 && counters.toolRuns > capability.MaxToolRuns {
+		log.Printf("usage limit exceeded: job=%s tool_runs=%d/%d", jobID, counters.toolRuns, capability.MaxToolRuns)
 		return fmt.Errorf("job %s exceeded tool run limit: %d > %d", jobID, counters.toolRuns, capability.MaxToolRuns)
 	}
 	if capability.MaxItemCreations > 0 && counters.itemCreations > capability.MaxItemCreations {
+		log.Printf("usage limit exceeded: job=%s item_creations=%d/%d", jobID, counters.itemCreations, capability.MaxItemCreations)
 		return fmt.Errorf("job %s exceeded item creation limit: %d > %d", jobID, counters.itemCreations, capability.MaxItemCreations)
 	}
 	return nil

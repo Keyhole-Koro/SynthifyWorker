@@ -58,7 +58,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Synthify Worker listening on %s", addr)
-	if err := http.ListenAndServe(addr, middleware.Logger(mux)); err != nil {
+	if err := http.ListenAndServe(addr, middleware.Recover(middleware.Logger(mux))); err != nil {
 		log.Fatal(err)
 	}
 }
