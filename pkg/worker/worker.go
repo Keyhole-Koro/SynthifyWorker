@@ -65,7 +65,7 @@ func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobsta
 
 	r, err := runner.New(runner.Config{
 		AppName:           "synthify-worker",
-		Agent:             orch.Agent(),
+		Agent:             orch.Agent,
 		SessionService:    session.InMemoryService(),
 		AutoCreateSession: true,
 	})
@@ -117,7 +117,7 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 		w.status.Running(ctx, payload)
 	}
 
-	if err := w.processDocument(ctx, req); err != nil {
+	if err := w.orchestrator.ProcessDocument(ctx, w.runner, req.JobID, req.DocumentID, req.WorkspaceID, req.FileURI, req.Filename, req.MimeType); err != nil {
 		log.Printf("Agent execution failed: %v", err)
 		w.repo.FailProcessingJob(ctx, req.JobID, err.Error())
 		if w.status != nil {
@@ -133,10 +133,6 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 	}
 
 	return nil
-}
-
-func (w *Worker) processDocument(ctx context.Context, req ExecutePlanRequest) error {
-	return w.orchestrator.ProcessDocument(ctx, w.runner, req.JobID, req.DocumentID, req.WorkspaceID, req.FileURI, req.Filename, req.MimeType)
 }
 
 type Planner struct {

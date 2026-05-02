@@ -59,11 +59,11 @@ Connect handler 実装は [connect.go](/home/unix/Synthify/worker/pkg/worker/con
 1. request を検証する
 2. job / document の存在を確認する
 3. job status を `running` にする
-4. `processDocument` を実行する
+4. orchestrator の `ProcessDocument` を実行する
 5. 成功なら job を `succeeded` にする
 6. 失敗なら job を `failed` にする
 
-`processDocument` の中では次の順で進む。
+`ProcessDocument` が起動する ADK agent は次の順で進む。
 
 1. `text_extraction`
    - `file_uri` から source file を取得する

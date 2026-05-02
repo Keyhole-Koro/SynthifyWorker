@@ -20,7 +20,7 @@ import (
 )
 
 type Orchestrator struct {
-	agent        agent.Agent
+	Agent        agent.Agent
 	currentJobID atomic.Pointer[string]
 	base         *base.Context
 }
@@ -184,15 +184,8 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 		return nil, err
 	}
 
-	orch.agent = a
+	orch.Agent = a
 	return orch, nil
-}
-
-func (o *Orchestrator) Agent() agent.Agent {
-	if o == nil {
-		return nil
-	}
-	return o.agent
 }
 
 func (o *Orchestrator) ProcessDocument(ctx context.Context, runner *runner.Runner, jobID, documentID, workspaceID, fileURI, filename, mimeType string) error {
