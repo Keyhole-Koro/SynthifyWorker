@@ -7,8 +7,8 @@ import (
 
 	pgvector "github.com/pgvector/pgvector-go"
 
-	"github.com/Keyhole-Koro/SynthifyShared/repository"
-	"github.com/synthify/backend/worker/pkg/worker/llm"
+	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
 	"google.golang.org/adk/tool"
 )
 

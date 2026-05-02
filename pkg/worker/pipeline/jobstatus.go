@@ -1,6 +1,6 @@
 package pipeline
 
-import "github.com/Keyhole-Koro/SynthifyShared/jobstatus"
+import "github.com/synthify/backend/packages/shared/jobstatus"
 
 func (p *PipelineContext) JobStatusPayload() jobstatus.Payload {
 	return jobstatus.Payload{

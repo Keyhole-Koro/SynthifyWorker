@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	"github.com/synthify/backend/packages/shared/domain"
 )
 
 func TestFetchCachesContent(t *testing.T) {

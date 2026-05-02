@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	joblog "github.com/Keyhole-Koro/SynthifyLogViewer"
-	"github.com/Keyhole-Koro/SynthifyShared/config"
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	"github.com/synthify/backend/worker/pkg/worker/sourcefiles"
+	"github.com/synthify/backend/packages/shared/config"
+	"github.com/synthify/backend/packages/shared/domain"
+	"github.com/synthify/backend/packages/shared/joblog"
+	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"google.golang.org/genai"
 )
 

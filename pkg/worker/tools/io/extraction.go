@@ -3,8 +3,8 @@ package io
 import (
 	"strings"
 
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	"github.com/synthify/backend/worker/pkg/worker/sourcefiles"
+	"github.com/synthify/backend/packages/shared/domain"
+	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )

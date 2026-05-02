@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	"github.com/synthify/backend/packages/shared/domain"
 )
 
 type Client interface {

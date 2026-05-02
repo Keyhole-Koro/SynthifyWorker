@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Keyhole-Koro/SynthifyShared/pipeline"
+	"github.com/synthify/backend/packages/shared/pipeline"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )

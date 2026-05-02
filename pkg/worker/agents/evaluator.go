@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/synthify/backend/worker/pkg/worker/llm"
+	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
 )
 
 type Evaluator struct {
@@ -38,7 +38,7 @@ Score from 0-100 based on:
 Set passed=true if score >= 70.
 Return findings as a list of specific issues found.`,
 		UserPrompt: fmt.Sprintf("Evaluate this knowledge tree:\n%s", treeData),
-		Schema: evaluationOutput{},
+		Schema:     evaluationOutput{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("evaluate tree: %w", err)

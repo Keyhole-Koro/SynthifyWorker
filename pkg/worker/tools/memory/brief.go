@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	"github.com/synthify/backend/packages/shared/domain"
 )
 
 type Brief struct {

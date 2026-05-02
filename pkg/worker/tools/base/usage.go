@@ -7,9 +7,9 @@ import (
 	"log"
 	"sync"
 
-	joblog "github.com/Keyhole-Koro/SynthifyLogViewer"
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
-	"github.com/synthify/backend/worker/pkg/worker/llm"
+	"github.com/synthify/backend/packages/shared/domain"
+	"github.com/synthify/backend/packages/shared/joblog"
+	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
 )
 
 type sessionIDContext interface {

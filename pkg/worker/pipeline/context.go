@@ -1,6 +1,6 @@
 package pipeline
 
-import "github.com/Keyhole-Koro/SynthifyShared/domain"
+import "github.com/synthify/backend/packages/shared/domain"
 
 type PipelineContext struct {
 	JobID       string

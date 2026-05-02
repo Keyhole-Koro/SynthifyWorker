@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Keyhole-Koro/SynthifyShared/domain"
+	"github.com/synthify/backend/packages/shared/domain"
 )
 
 func EnsureFetched(ctx context.Context, files []domain.SourceFile) ([]domain.SourceFile, error) {

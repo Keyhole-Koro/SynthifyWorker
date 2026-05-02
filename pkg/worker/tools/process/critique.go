@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/synthify/backend/worker/pkg/worker/llm"
-	"github.com/synthify/backend/worker/pkg/worker/tools/base"
+	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
+	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
