@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"mime"
 	"net/http"
 	"path"
 	"strings"
 	"time"
 
+	joblog "github.com/Keyhole-Koro/SynthifyLogViewer"
 	"github.com/Keyhole-Koro/SynthifyShared/config"
 	"github.com/Keyhole-Koro/SynthifyShared/domain"
 	"github.com/synthify/backend/worker/pkg/worker/sourcefiles"
@@ -96,7 +98,19 @@ func (c *GeminiClient) generate(ctx context.Context, systemPrompt, userPrompt st
 		return nil, fmt.Errorf("build contents: %w", err)
 	}
 	defer cleanup()
-	return c.client.Models.GenerateContent(ctx, c.model, contents, config)
+	start := time.Now()
+	res, err := c.client.Models.GenerateContent(ctx, c.model, contents, config)
+	durationMs := time.Since(start).Milliseconds()
+	log.Printf("gemini: model=%s duration=%dms err=%v", c.model, durationMs, err)
+	if err == nil {
+		joblog.FromContext(ctx).Log(ctx, joblog.Event{
+			Level:   joblog.INFO,
+			Event:   "llm.call.completed",
+			Message: fmt.Sprintf("gemini call completed: model=%s duration=%dms", c.model, durationMs),
+			Detail:  map[string]any{"model": c.model, "duration_ms": durationMs},
+		})
+	}
+	return res, err
 }
 
 func (c *GeminiClient) buildContents(ctx context.Context, userPrompt string, sourceFiles []domain.SourceFile) ([]*genai.Content, func(), error) {

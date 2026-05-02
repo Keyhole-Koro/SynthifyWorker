@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/Keyhole-Koro/SynthifyShared/jobstatus"
 	"github.com/Keyhole-Koro/SynthifyShared/repository"
 	"github.com/Keyhole-Koro/SynthifyShared/util"
+	"github.com/Keyhole-Koro/SynthifyLogViewer"
 	"github.com/synthify/backend/worker/pkg/worker/agents"
 	"github.com/synthify/backend/worker/pkg/worker/llm"
 	"github.com/synthify/backend/worker/pkg/worker/tools/base"
@@ -85,7 +85,15 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 	if err := req.Validate(); err != nil {
 		return fmt.Errorf("invalid request: %w", err)
 	}
-	log.Printf("LLM worker processing job %s (doc: %s)", req.JobID, req.DocumentID)
+	joblog.FromContext(ctx).Log(ctx, joblog.Event{
+		JobID:       req.JobID,
+		WorkspaceID: req.WorkspaceID,
+		DocumentID:  req.DocumentID,
+		Level:       joblog.INFO,
+		Event:       "job.running",
+		Message:     fmt.Sprintf("LLM worker processing job (doc: %s)", req.DocumentID),
+		Detail:      map[string]any{"document_id": req.DocumentID},
+	})
 
 	job, ok := w.repo.GetProcessingJob(ctx, req.JobID)
 	if !ok {
@@ -118,7 +126,15 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 	}
 
 	if err := w.orchestrator.ProcessDocument(ctx, w.runner, req.JobID, req.DocumentID, req.WorkspaceID, req.FileURI, req.Filename, req.MimeType); err != nil {
-		log.Printf("Agent execution failed: %v", err)
+		joblog.FromContext(ctx).Log(ctx, joblog.Event{
+			JobID:       req.JobID,
+			WorkspaceID: req.WorkspaceID,
+			DocumentID:  req.DocumentID,
+			Level:       joblog.ERROR,
+			Event:       "job.failed",
+			Message:     fmt.Sprintf("Agent execution failed: %v", err),
+			Detail:      map[string]any{"error": err.Error()},
+		})
 		w.repo.FailProcessingJob(ctx, req.JobID, err.Error())
 		if w.status != nil {
 			w.status.Failed(ctx, payload, err.Error())
@@ -126,7 +142,14 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 		return err
 	}
 
-	log.Printf("LLM worker job %s completed successfully", req.JobID)
+	joblog.FromContext(ctx).Log(ctx, joblog.Event{
+		JobID:       req.JobID,
+		WorkspaceID: req.WorkspaceID,
+		DocumentID:  req.DocumentID,
+		Level:       joblog.INFO,
+		Event:       "job.completed",
+		Message:     "LLM worker job completed successfully",
+	})
 	w.repo.CompleteProcessingJob(ctx, req.JobID)
 	if w.status != nil {
 		w.status.Completed(ctx, payload)
@@ -230,6 +253,19 @@ func (e *JobEvaluator) Evaluate(ctx context.Context, jobID string) (*domain.JobE
 	}
 
 	e.repo.UpsertJobEvaluation(ctx, jobID, result)
+	joblog.FromContext(ctx).Log(ctx, joblog.Event{
+		JobID:       jobID,
+		WorkspaceID: job.WorkspaceID,
+		DocumentID:  job.DocumentID,
+		Level:       joblog.INFO,
+		Event:       "evaluation.completed",
+		Message:     fmt.Sprintf("evaluation: passed=%v score=%d findings=%d", result.Passed, result.Score, len(result.Findings)),
+		Detail: map[string]any{
+			"passed":   result.Passed,
+			"score":    result.Score,
+			"findings": result.Findings,
+		},
+	})
 	return result, nil
 }
 

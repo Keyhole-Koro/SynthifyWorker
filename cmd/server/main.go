@@ -10,6 +10,8 @@ import (
 	"github.com/Keyhole-Koro/SynthifyShared/config"
 	treev1connect "github.com/Keyhole-Koro/SynthifyShared/gen/synthify/tree/v1/treev1connect"
 	"github.com/Keyhole-Koro/SynthifyShared/middleware"
+	"github.com/Keyhole-Koro/SynthifyShared/repository/postgres"
+	"github.com/Keyhole-Koro/SynthifyLogViewer"
 	"github.com/synthify/backend/worker/pkg/worker"
 	"github.com/synthify/backend/worker/pkg/worker/llm"
 	"google.golang.org/adk/model"
@@ -24,6 +26,8 @@ func main() {
 	appCtx := app.Bootstrap(ctx, cfg.GCSUploadURLBase, cfg.FirebaseProjectID)
 	store := appCtx.Store
 	notifier := appCtx.Notifier
+
+	jobLogger := postgres.NewDBLogger(store)
 
 	var adkModel model.LLM
 	var embedder *llm.GeminiClient
@@ -58,7 +62,15 @@ func main() {
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Synthify Worker listening on %s", addr)
-	if err := http.ListenAndServe(addr, middleware.Recover(middleware.Logger(mux))); err != nil {
+	h := middleware.Recover(middleware.Logger(withJobLogger(jobLogger, mux)))
+	if err := http.ListenAndServe(addr, h); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func withJobLogger(l joblog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := joblog.WithLogger(r.Context(), l)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
