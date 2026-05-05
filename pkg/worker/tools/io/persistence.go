@@ -49,9 +49,9 @@ func NewPersistenceTool(b *base.Context) (tool.Tool, error) {
 			if mapped := itemIDs[item.ParentLocalID]; mapped != "" {
 				parentID = mapped
 			}
-			label := strings.TrimSpace(item.Label)
-			if label == "" {
-				label = item.LocalID
+			title := strings.TrimSpace(item.Title)
+			if title == "" {
+				title = item.LocalID
 			}
 			createdItem := b.Repo.CreateStructuredItemWithCapability(
 				ctx,
@@ -59,17 +59,17 @@ func NewPersistenceTool(b *base.Context) (tool.Tool, error) {
 				args.JobID,
 				args.DocumentID,
 				args.WorkspaceID,
-				label,
+				title,
 				item.Level,
 				item.Description,
-				item.SummaryHTML,
+				item.Content,
 				item.OverrideCSS,
 				"llm_worker",
 				parentID,
 				item.SourceChunkIDs,
 			)
 			if createdItem == nil {
-				return PersistenceResult{}, fmt.Errorf("failed to create item %q", label)
+				return PersistenceResult{}, fmt.Errorf("failed to create item %q", title)
 			}
 			itemIDs[item.LocalID] = createdItem.ItemID
 			for _, chunkID := range item.SourceChunkIDs {

@@ -24,10 +24,10 @@ func NewSummaryTool() (tool.Tool, error) {
 	}, func(ctx tool.Context, args SummaryArgs) (SummaryResult, error) {
 		description := args.Item.Description
 		if description == "" {
-			description = args.Item.Label
+			description = args.Item.Title
 		}
 		return SummaryResult{
-			HTML: fmt.Sprintf("<p><strong>%s</strong>: %s</p>", base.HtmlEscape(args.Item.Label), base.HtmlEscape(description)),
+			HTML: fmt.Sprintf("<p><strong>%s</strong>: %s</p>", base.HtmlEscape(args.Item.Title), base.HtmlEscape(description)),
 		}, nil
 	})
 }

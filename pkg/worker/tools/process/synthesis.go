@@ -65,7 +65,7 @@ Rules:
 - Assign local_id as "item_1", "item_2", etc.
 - level: 1 for root-level items, 2 for children, 3 for grandchildren.
 - description: concise explanation grounded in the source text. No hallucination.
-- summary_html: 1-3 <p> paragraphs. Use <strong> for key terms.
+- content: 1-3 <p> paragraphs. Use <strong> for key terms.
   Link to child items with <a data-paper-id="{local_id}">term</a> so readers can expand them inline.
   You may also use <blockquote> for quotations, <table> for tabular data,
   <div class="compare-grid"><div class="compare-col">...</div><div class="compare-col">...</div></div> for side-by-side comparisons,
@@ -94,17 +94,17 @@ Rules:
 func deterministicSynthesis(documentID string, chunks []domain.Chunk) []domain.SynthesizedItem {
 	items := make([]domain.SynthesizedItem, 0, len(chunks))
 	for _, chunk := range chunks {
-		label := strings.TrimSpace(chunk.Heading)
-		if label == "" {
-			label = fmt.Sprintf("Section %d", chunk.ChunkIndex+1)
+		title := strings.TrimSpace(chunk.Heading)
+		if title == "" {
+			title = fmt.Sprintf("Section %d", chunk.ChunkIndex+1)
 		}
 		description := base.SummarizePlainText(chunk.Text, 360)
 		items = append(items, domain.SynthesizedItem{
 			LocalID:        fmt.Sprintf("chunk_%d", chunk.ChunkIndex),
-			Label:          label,
+			Title:          title,
 			Level:          1,
 			Description:    description,
-			SummaryHTML:    "<p>" + base.HtmlEscape(description) + "</p>",
+			Content:        "<p>" + base.HtmlEscape(description) + "</p>",
 			SourceChunkIDs: []string{fmt.Sprintf("%s_chunk_%d", documentID, chunk.ChunkIndex)},
 		})
 	}

@@ -14,7 +14,7 @@ import (
 
 type MergeCandidate struct {
 	LocalID     string `json:"local_id"`
-	Label       string `json:"label"`
+	Title       string `json:"title"`
 	Description string `json:"description"`
 }
 
@@ -49,7 +49,7 @@ func merge(ctx context.Context, llmClient base.LLMClient, items []MergeCandidate
 
 	var sb strings.Builder
 	for _, item := range items {
-		fmt.Fprintf(&sb, "[%s] %s: %s\n", item.LocalID, item.Label, item.Description)
+		fmt.Fprintf(&sb, "[%s] %s: %s\n", item.LocalID, item.Title, item.Description)
 	}
 
 	type llmResult struct {
