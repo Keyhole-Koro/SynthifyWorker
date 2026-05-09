@@ -16,6 +16,7 @@ import (
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	treev1connect "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1/treev1connect"
+	"github.com/synthify/backend/packages/shared/joblifecycle"
 	"github.com/synthify/backend/packages/shared/joblog"
 	"github.com/synthify/backend/packages/shared/jobstatus"
 	"github.com/synthify/backend/packages/shared/repository"
@@ -43,6 +44,7 @@ type Repository interface {
 type Worker struct {
 	orchestrator *agents.Orchestrator
 	repo         Repository
+	lifecycle    *joblifecycle.Service
 	status       jobstatus.Notifier
 	runner       *runner.Runner
 }
@@ -79,6 +81,7 @@ func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobsta
 	return &Worker{
 		orchestrator: orch,
 		repo:         repo,
+		lifecycle:    joblifecycle.New(repo, notifier, log.Default()),
 		status:       notifier,
 		runner:       r,
 	}, nil
@@ -123,13 +126,8 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 		}
 	}
 
-	if err := w.repo.MarkProcessingJobRunning(ctx, req.JobID); err != nil {
+	if err := w.lifecycle.MarkRunning(ctx, payload); err != nil {
 		return fmt.Errorf("mark job running: %w", err)
-	}
-	if w.status != nil {
-		if err := w.status.Running(ctx, payload); err != nil {
-			log.Printf("jobstatus: failed to notify running: %v", err)
-		}
 	}
 
 	if err := w.orchestrator.ProcessDocument(ctx, w.runner, req.JobID, req.DocumentID, req.WorkspaceID, req.FileURI, req.Filename, req.MimeType); err != nil {
@@ -145,13 +143,8 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 		Event:       "job.completed",
 		Message:     "LLM worker job completed successfully",
 	})
-	if err := w.repo.CompleteProcessingJob(ctx, req.JobID); err != nil {
+	if err := w.lifecycle.Complete(ctx, payload); err != nil {
 		return fmt.Errorf("complete job in repo: %w", err)
-	}
-	if w.status != nil {
-		if err := w.status.Completed(ctx, payload); err != nil {
-			log.Printf("jobstatus: failed to notify completion: %v", err)
-		}
 	}
 
 	return nil
@@ -167,14 +160,7 @@ func (w *Worker) failJob(ctx context.Context, req ExecutePlanRequest, payload jo
 		Message:     fmt.Sprintf("Agent execution failed: %v", cause),
 		Detail:      map[string]any{"error": cause.Error()},
 	})
-	if dbErr := w.repo.FailProcessingJob(ctx, req.JobID, cause.Error()); dbErr != nil {
-		log.Printf("repository: failed to mark job failed: %v", dbErr)
-	}
-	if w.status != nil {
-		if nErr := w.status.Failed(ctx, payload, cause.Error()); nErr != nil {
-			log.Printf("jobstatus: failed to notify failure: %v", nErr)
-		}
-	}
+	w.lifecycle.TryFail(ctx, payload, cause.Error())
 }
 
 type Planner struct {
