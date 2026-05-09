@@ -89,7 +89,7 @@ func NewOrchestrator(m model.LLM, b *base.Context, repo any) (*Orchestrator, err
 	if err != nil {
 		return nil, err
 	}
-	extraction, err := toolsio.NewExtractionTool()
+	extraction, err := toolsio.NewExtractionTool(b)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +98,10 @@ func NewOrchestrator(m model.LLM, b *base.Context, repo any) (*Orchestrator, err
 		return nil, err
 	}
 	summary, err := process.NewSummaryTool()
+	if err != nil {
+		return nil, err
+	}
+	grep, err := toolsio.NewGrepTool(b)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +137,7 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 			analysis,
 			glossaryRegister, glossaryLookup,
 			critique, search, merge, tables, repair, extraction, briefing, summary,
+			grep,
 		},
 		BeforeModelCallbacks: []llmagent.BeforeModelCallback{
 			func(ctx agent.CallbackContext, req *model.LLMRequest) (*model.LLMResponse, error) {
@@ -193,7 +198,7 @@ func (o *Orchestrator) ProcessDocument(ctx context.Context, runner *runner.Runne
 		return fmt.Errorf("runner is not configured")
 	}
 	if o.base != nil {
-		o.base.BeginJob(ctx, jobID)
+		o.base.BeginJob(ctx, jobID, workspaceID, documentID)
 	}
 	o.currentJobID.Store(&jobID)
 	msg := fmt.Sprintf(

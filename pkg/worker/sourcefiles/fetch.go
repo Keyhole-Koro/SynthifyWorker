@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/synthify/backend/packages/shared/domain"
+	"github.com/synthify/backend/packages/shared/storage"
 )
 
 func EnsureFetched(ctx context.Context, files []domain.SourceFile) ([]domain.SourceFile, error) {
@@ -22,6 +23,8 @@ func EnsureFetched(ctx context.Context, files []domain.SourceFile) ([]domain.Sou
 	return out, nil
 }
 
+var FUSE *storage.FUSEHandler
+
 func Fetch(ctx context.Context, file *domain.SourceFile) error {
 	if file == nil {
 		return fmt.Errorf("source file is nil")
@@ -29,6 +32,15 @@ func Fetch(ctx context.Context, file *domain.SourceFile) error {
 	if len(file.Content) > 0 {
 		return nil
 	}
+
+	// Try GCS FUSE mount if available via shared handler
+	if FUSE != nil {
+		ok, err := FUSE.PopulateSourceFile(file)
+		if err == nil && ok {
+			return nil
+		}
+	}
+
 	if strings.TrimSpace(file.URI) == "" {
 		return fmt.Errorf("source file URI is empty")
 	}

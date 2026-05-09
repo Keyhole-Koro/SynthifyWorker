@@ -36,6 +36,13 @@ type PromptMemory interface {
 	RenderForPrompt() string
 }
 
+// JobContext holds metadata about the currently executing LLM job.
+type JobContext struct {
+	JobID       string
+	WorkspaceID string
+	DocumentID  string
+}
+
 // Context provides shared dependencies to all tools.
 type Context struct {
 	Repo     Repository
@@ -43,13 +50,21 @@ type Context struct {
 	LLM      LLMClient
 	Usage    *UsageLimiter
 	Memories []PromptMemory
+	Job      *JobContext
 }
 
-func (b *Context) BeginJob(ctx context.Context, jobID string) {
-	if b == nil || b.Usage == nil {
+func (b *Context) BeginJob(ctx context.Context, jobID string, wsID, docID string) {
+	if b == nil {
 		return
 	}
-	b.Usage.BeginJob(ctx, jobID)
+	b.Job = &JobContext{
+		JobID:       jobID,
+		WorkspaceID: wsID,
+		DocumentID:  docID,
+	}
+	if b.Usage != nil {
+		b.Usage.BeginJob(ctx, jobID)
+	}
 }
 
 func (b *Context) IncrementLLMCalls(ctx context.Context) error {

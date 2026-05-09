@@ -12,8 +12,10 @@ import (
 	"github.com/synthify/backend/packages/shared/joblog"
 	"github.com/synthify/backend/packages/shared/middleware"
 	"github.com/synthify/backend/packages/shared/repository/postgres"
+	"github.com/synthify/backend/packages/shared/storage"
 	"github.com/synthify/backend/apps/worker/pkg/worker"
 	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
+	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/model/gemini"
 	"google.golang.org/genai"
@@ -22,6 +24,7 @@ import (
 func main() {
 	ctx := context.Background()
 	cfg := config.LoadWorker()
+	sourcefiles.FUSE = storage.NewFUSEHandler(cfg.GCSFuseMountPath)
 
 	appCtx := app.Bootstrap(ctx, cfg.GCSUploadURLBase, cfg.FirebaseProjectID)
 	store := appCtx.Store
