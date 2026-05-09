@@ -9,6 +9,10 @@ import (
 	"strings"
 
 	connect "connectrpc.com/connect"
+	"github.com/synthify/backend/apps/worker/pkg/worker/agents"
+	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
+	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
+	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	treev1connect "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1/treev1connect"
@@ -16,10 +20,6 @@ import (
 	"github.com/synthify/backend/packages/shared/jobstatus"
 	"github.com/synthify/backend/packages/shared/repository"
 	"github.com/synthify/backend/packages/shared/util"
-	"github.com/synthify/backend/apps/worker/pkg/worker/agents"
-	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
-	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
-	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
@@ -133,23 +133,7 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 	}
 
 	if err := w.orchestrator.ProcessDocument(ctx, w.runner, req.JobID, req.DocumentID, req.WorkspaceID, req.FileURI, req.Filename, req.MimeType); err != nil {
-		joblog.FromContext(ctx).Log(ctx, joblog.Event{
-			JobID:       req.JobID,
-			WorkspaceID: req.WorkspaceID,
-			DocumentID:  req.DocumentID,
-			Level:       joblog.ERROR,
-			Event:       "job.failed",
-			Message:     fmt.Sprintf("Agent execution failed: %v", err),
-			Detail:      map[string]any{"error": err.Error()},
-		})
-		if dbErr := w.repo.FailProcessingJob(ctx, req.JobID, err.Error()); dbErr != nil {
-			log.Printf("repository: failed to mark job failed: %v", dbErr)
-		}
-		if w.status != nil {
-			if nErr := w.status.Failed(ctx, payload, err.Error()); nErr != nil {
-				log.Printf("jobstatus: failed to notify failure: %v", nErr)
-			}
-		}
+		w.failJob(ctx, req, payload, err)
 		return err
 	}
 
@@ -171,6 +155,26 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 	}
 
 	return nil
+}
+
+func (w *Worker) failJob(ctx context.Context, req ExecutePlanRequest, payload jobstatus.Payload, cause error) {
+	joblog.FromContext(ctx).Log(ctx, joblog.Event{
+		JobID:       req.JobID,
+		WorkspaceID: req.WorkspaceID,
+		DocumentID:  req.DocumentID,
+		Level:       joblog.ERROR,
+		Event:       "job.failed",
+		Message:     fmt.Sprintf("Agent execution failed: %v", cause),
+		Detail:      map[string]any{"error": cause.Error()},
+	})
+	if dbErr := w.repo.FailProcessingJob(ctx, req.JobID, cause.Error()); dbErr != nil {
+		log.Printf("repository: failed to mark job failed: %v", dbErr)
+	}
+	if w.status != nil {
+		if nErr := w.status.Failed(ctx, payload, cause.Error()); nErr != nil {
+			log.Printf("jobstatus: failed to notify failure: %v", nErr)
+		}
+	}
 }
 
 type Planner struct {
