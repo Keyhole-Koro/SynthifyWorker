@@ -36,13 +36,17 @@ func NewPersistenceTool(b *base.Context) (tool.Tool, error) {
 		if err := b.IncrementItemCreations(ctx, len(args.Items)); err != nil {
 			return PersistenceResult{}, err
 		}
-		capability, ok := b.Repo.GetJobCapability(ctx, args.JobID)
-		if !ok || capability == nil {
-			return PersistenceResult{}, fmt.Errorf("job capability not found: %s", args.JobID)
+		capability, err := b.Repo.GetJobCapability(ctx, args.JobID)
+		if err != nil {
+			return PersistenceResult{}, fmt.Errorf("job capability not found: %s (%w)", args.JobID, err)
 		}
 
 		itemIDs := make(map[string]string, len(args.Items))
-		rootID, _ := b.Repo.GetWorkspaceRootItemID(ctx, args.WorkspaceID)
+		rootID, err := b.Repo.GetWorkspaceRootItemID(ctx, args.WorkspaceID)
+		if err != nil {
+			// Fallback or handle missing root
+			rootID = ""
+		}
 		created := 0
 		for _, item := range args.Items {
 			parentID := rootID

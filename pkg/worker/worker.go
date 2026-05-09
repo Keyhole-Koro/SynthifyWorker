@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -95,13 +96,13 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 		Detail:      map[string]any{"document_id": req.DocumentID},
 	})
 
-	job, ok := w.repo.GetProcessingJob(ctx, req.JobID)
-	if !ok {
-		return fmt.Errorf("job %s not found", req.JobID)
+	job, err := w.repo.GetProcessingJob(ctx, req.JobID)
+	if err != nil {
+		return fmt.Errorf("get job %s: %w", req.JobID, err)
 	}
 
-	if _, ok := w.repo.GetDocument(ctx, req.DocumentID); !ok {
-		return fmt.Errorf("document %s not found", req.DocumentID)
+	if _, err := w.repo.GetDocument(ctx, req.DocumentID); err != nil {
+		return fmt.Errorf("get document %s: %w", req.DocumentID, err)
 	}
 
 	payload := jobstatus.Payload{
@@ -112,7 +113,7 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 		JobType:     job.JobType.String(),
 	}
 
-	if approvals, ok := w.repo.ListJobApprovalRequests(ctx, req.JobID); ok {
+	if approvals, err := w.repo.ListJobApprovalRequests(ctx, req.JobID); err == nil {
 		for _, a := range approvals {
 			if a.Status == "rejected" {
 				return ErrPlanRejected
@@ -120,9 +121,13 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 		}
 	}
 
-	w.repo.MarkProcessingJobRunning(ctx, req.JobID)
+	if err := w.repo.MarkProcessingJobRunning(ctx, req.JobID); err != nil {
+		return fmt.Errorf("mark job running: %w", err)
+	}
 	if w.status != nil {
-		w.status.Running(ctx, payload)
+		if err := w.status.Running(ctx, payload); err != nil {
+			log.Printf("jobstatus: failed to notify running: %v", err)
+		}
 	}
 
 	if err := w.orchestrator.ProcessDocument(ctx, w.runner, req.JobID, req.DocumentID, req.WorkspaceID, req.FileURI, req.Filename, req.MimeType); err != nil {
@@ -135,9 +140,13 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 			Message:     fmt.Sprintf("Agent execution failed: %v", err),
 			Detail:      map[string]any{"error": err.Error()},
 		})
-		w.repo.FailProcessingJob(ctx, req.JobID, err.Error())
+		if dbErr := w.repo.FailProcessingJob(ctx, req.JobID, err.Error()); dbErr != nil {
+			log.Printf("repository: failed to mark job failed: %v", dbErr)
+		}
 		if w.status != nil {
-			w.status.Failed(ctx, payload, err.Error())
+			if nErr := w.status.Failed(ctx, payload, err.Error()); nErr != nil {
+				log.Printf("jobstatus: failed to notify failure: %v", nErr)
+			}
 		}
 		return err
 	}
@@ -150,9 +159,13 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 		Event:       "job.completed",
 		Message:     "LLM worker job completed successfully",
 	})
-	w.repo.CompleteProcessingJob(ctx, req.JobID)
+	if err := w.repo.CompleteProcessingJob(ctx, req.JobID); err != nil {
+		return fmt.Errorf("complete job in repo: %w", err)
+	}
 	if w.status != nil {
-		w.status.Completed(ctx, payload)
+		if err := w.status.Completed(ctx, payload); err != nil {
+			log.Printf("jobstatus: failed to notify completion: %v", err)
+		}
 	}
 
 	return nil
@@ -171,10 +184,13 @@ func (p *Planner) GenerateExecutionPlan(ctx context.Context, req ExecutePlanRequ
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	if _, ok := p.repo.GetDocument(ctx, req.DocumentID); !ok {
-		return nil, fmt.Errorf("document %s not found", req.DocumentID)
+	if _, err := p.repo.GetDocument(ctx, req.DocumentID); err != nil {
+		return nil, fmt.Errorf("get document %s: %w", req.DocumentID, err)
 	}
-	signals, _ := p.repo.GetJobPlanningSignals(ctx, req.DocumentID, req.WorkspaceID, req.TreeID)
+	signals, err := p.repo.GetJobPlanningSignals(ctx, req.DocumentID, req.WorkspaceID, req.TreeID)
+	if err != nil {
+		log.Printf("planner: failed to get planning signals: %v", err)
+	}
 	payload := map[string]any{
 		"steps": []map[string]any{
 			{"name": "text_extraction", "operation": treev1.JobOperation_JOB_OPERATION_READ_DOCUMENT.String(), "risk_tier": "tier_0"},
@@ -196,8 +212,8 @@ func (p *Planner) GenerateExecutionPlan(ctx context.Context, req ExecutePlanRequ
 		PlanJSON:  util.MustJSON(payload),
 		CreatedBy: "llm_worker",
 	}
-	if !p.repo.UpsertJobExecutionPlan(ctx, req.JobID, plan) {
-		return nil, fmt.Errorf("failed to upsert execution plan")
+	if err := p.repo.UpsertJobExecutionPlan(ctx, req.JobID, plan); err != nil {
+		return nil, fmt.Errorf("failed to upsert execution plan: %w", err)
 	}
 	return plan, nil
 }
@@ -212,14 +228,14 @@ func NewJobEvaluator(repo Repository, llmClient llm.Client) *JobEvaluator {
 }
 
 func (e *JobEvaluator) Evaluate(ctx context.Context, jobID string) (*domain.JobEvaluationResult, error) {
-	job, ok := e.repo.GetProcessingJob(ctx, jobID)
-	if !ok {
-		return nil, fmt.Errorf("job %s not found", jobID)
+	job, err := e.repo.GetProcessingJob(ctx, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("get job %s: %w", jobID, err)
 	}
 
-	rootID, ok := e.repo.GetWorkspaceRootItemID(ctx, job.WorkspaceID)
-	if !ok {
-		return nil, fmt.Errorf("root item not found for workspace %s", job.WorkspaceID)
+	rootID, err := e.repo.GetWorkspaceRootItemID(ctx, job.WorkspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("root item for workspace %s: %w", job.WorkspaceID, err)
 	}
 
 	subtree, err := e.repo.GetSubtree(ctx, rootID, 5)

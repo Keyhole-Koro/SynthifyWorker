@@ -94,10 +94,10 @@ func (h *ConnectHandler) EvaluateJobArtifact(ctx context.Context, req *connect.R
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 	} else {
-		var ok bool
-		result, ok = h.jobRepo.EvaluateJob(ctx, req.Msg.GetJobId())
-		if !ok || result == nil {
-			return nil, connect.NewError(connect.CodeNotFound, errors.New("evaluation result not found"))
+		var err error
+		result, err = h.jobRepo.EvaluateJob(ctx, req.Msg.GetJobId())
+		if err != nil {
+			return nil, connect.NewError(connect.CodeNotFound, err)
 		}
 	}
 

@@ -132,9 +132,9 @@ func (l *UsageLimiter) increment(ctx context.Context, llmCalls, toolRuns, itemCr
 	return nil
 }
 
-func (l *UsageLimiter) loadCapability(ctx context.Context, jobID string) (*domain.JobCapability, bool) {
+func (l *UsageLimiter) loadCapability(ctx context.Context, jobID string) (*domain.JobCapability, error) {
 	if l == nil || l.repo == nil || jobID == "" {
-		return nil, false
+		return nil, domain.ErrNotFound
 	}
 	return l.repo.GetJobCapability(ctx, jobID)
 }
