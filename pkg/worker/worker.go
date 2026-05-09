@@ -18,6 +18,7 @@ import (
 	"github.com/synthify/backend/packages/shared/util"
 	"github.com/synthify/backend/apps/worker/pkg/worker/agents"
 	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
+	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/runner"
@@ -36,6 +37,7 @@ type Repository interface {
 	repository.DocumentRepository
 	repository.TreeRepository
 	repository.ItemRepository
+	repository.CheckpointRepository
 }
 
 type Worker struct {
@@ -59,7 +61,7 @@ func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobsta
 		LLM:      base.NewCountingLLMClient(llmClient, usage),
 		Usage:    usage,
 	}
-	orch, err := agents.NewOrchestrator(m, b, repo)
+	orch, err := agents.NewOrchestrator(m, b, repo, sourcefiles.FUSE)
 	if err != nil {
 		return nil, err
 	}

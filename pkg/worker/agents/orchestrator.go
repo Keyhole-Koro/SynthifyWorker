@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync/atomic"
 	"time"
 
@@ -11,6 +12,9 @@ import (
 	toolsio "github.com/synthify/backend/apps/worker/pkg/worker/tools/io"
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/memory"
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/process"
+	"github.com/synthify/backend/packages/shared/domain"
+	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/packages/shared/storage"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
@@ -23,6 +27,8 @@ type Orchestrator struct {
 	Agent        agent.Agent
 	currentJobID atomic.Pointer[string]
 	base         *base.Context
+	repo         repository.CheckpointRepository
+	fuse         *storage.FUSEHandler
 }
 
 // ToolLogger matches the repository interface for logging tool calls.
@@ -30,7 +36,22 @@ type ToolLogger interface {
 	LogToolCall(ctx context.Context, jobID, toolName, inputJSON, outputJSON string, durationMs int64) error
 }
 
-func NewOrchestrator(m model.LLM, b *base.Context, repo any) (*Orchestrator, error) {
+var stageTools = map[string]string{
+	"generate_brief":         "briefing",
+	"goal_driven_synthesis": "synthesis",
+	"persist_knowledge_tree": "persistence",
+}
+
+const currentCheckpointVersion = 1
+
+func NewOrchestrator(m model.LLM, b *base.Context, repo any, fuse *storage.FUSEHandler) (*Orchestrator, error) {
+	checkpointRepo, _ := repo.(repository.CheckpointRepository)
+	orch := &Orchestrator{
+		base: b,
+		repo: checkpointRepo,
+		fuse: fuse,
+	}
+
 	glossary := memory.NewGlossary()
 	journal := memory.NewJournal()
 	brief := memory.NewBrief()
@@ -106,8 +127,6 @@ func NewOrchestrator(m model.LLM, b *base.Context, repo any) (*Orchestrator, err
 		return nil, err
 	}
 
-	orch := &Orchestrator{base: b}
-
 	a, err := llmagent.New(llmagent.Config{
 		Name:  "orchestrator",
 		Model: m,
@@ -165,7 +184,42 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 				if err := b.IncrementToolRuns(ctx); err != nil {
 					return nil, err
 				}
-				return nil, nil
+
+				stage := stageTools[t.Name()]
+				if stage == "" || orch.repo == nil || orch.fuse == nil {
+					return nil, nil
+				}
+
+				jobIDPtr := orch.currentJobID.Load()
+				if jobIDPtr == nil || *jobIDPtr == "" {
+					return nil, nil
+				}
+				jobID := *jobIDPtr
+
+				// Check for existing checkpoint
+				var envelope domain.CheckpointEnvelope
+				found, err := orch.fuse.ReadCheckpoint(jobID, stage, &envelope)
+				if err != nil || !found {
+					_ = orch.repo.UpsertStageRunning(ctx, jobID, stage)
+					return nil, nil
+				}
+
+				// Validate checkpoint
+				if envelope.SchemaVersion != currentCheckpointVersion {
+					log.Printf("orchestrator: checkpoint version mismatch for stage %s: %d != %d", stage, envelope.SchemaVersion, currentCheckpointVersion)
+					_ = orch.repo.UpsertStageRunning(ctx, jobID, stage)
+					return nil, nil
+				}
+
+				// Basic input validation - compare document_id
+				if b.Job != nil && envelope.DocumentID != b.Job.DocumentID {
+					log.Printf("orchestrator: checkpoint document_id mismatch for stage %s", stage)
+					_ = orch.repo.UpsertStageRunning(ctx, jobID, stage)
+					return nil, nil
+				}
+
+				log.Printf("orchestrator: resuming stage %s from checkpoint", stage)
+				return envelope.Outputs, nil
 			},
 		},
 		AfterToolCallbacks: []llmagent.AfterToolCallback{
@@ -176,11 +230,46 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 				if err != nil {
 					resJSON, _ = json.Marshal(map[string]string{"error": err.Error()})
 				}
-				if logger, ok := repo.(ToolLogger); ok {
-					if p := orch.currentJobID.Load(); p != nil && *p != "" {
-						_ = logger.LogToolCall(context.Background(), *p, t.Name(), string(argJSON), string(resJSON), time.Since(start).Milliseconds())
-					}
+				
+				jobIDPtr := orch.currentJobID.Load()
+				jobID := ""
+				if jobIDPtr != nil {
+					jobID = *jobIDPtr
 				}
+
+				if logger, ok := repo.(ToolLogger); ok && jobID != "" {
+					_ = logger.LogToolCall(context.Background(), jobID, t.Name(), string(argJSON), string(resJSON), time.Since(start).Milliseconds())
+				}
+
+				// Save checkpoint if successful and stage-able
+				stage := stageTools[t.Name()]
+				if err == nil && stage != "" && jobID != "" && orch.repo != nil && orch.fuse != nil {
+					docID := ""
+					wsID := ""
+					if b.Job != nil {
+						docID = b.Job.DocumentID
+						wsID = b.Job.WorkspaceID
+					}
+					envelope := domain.CheckpointEnvelope{
+						SchemaVersion: currentCheckpointVersion,
+						Kind:          "synthify.worker_checkpoint",
+						Stage:         stage,
+						JobID:         jobID,
+						DocumentID:    docID,
+						WorkspaceID:   wsID,
+						CreatedAt:     time.Now().UTC().Format(time.RFC3339),
+						Inputs:        args,
+						Outputs:       result,
+					}
+					if writeErr := orch.fuse.WriteCheckpoint(jobID, stage, envelope); writeErr == nil {
+						_ = orch.repo.MarkStageSucceeded(ctx, jobID, stage, orch.fuse.ResolveCheckpointPath(jobID, stage))
+					} else {
+						log.Printf("orchestrator: failed to write checkpoint for stage %s: %v", stage, writeErr)
+					}
+				} else if err != nil && stage != "" && jobID != "" && orch.repo != nil {
+					_ = orch.repo.MarkStageFailed(ctx, jobID, stage, err.Error())
+				}
+
 				return result, err
 			},
 		},
