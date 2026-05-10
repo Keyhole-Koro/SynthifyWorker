@@ -24,6 +24,7 @@ type GrepArgs struct {
 }
 
 type GrepMatch struct {
+	FileID     string   `json:"file_id"`
 	FilePath   string   `json:"file_path"`
 	LineNumber int      `json:"line_number"`
 	Line       string   `json:"line"`
@@ -105,6 +106,16 @@ func grepSearch(ctx context.Context, b *base.Context, args GrepArgs) (GrepResult
 
 	// 3. Parse Output
 	result := parseGrepOutput(string(out), targetPath)
+
+	// Resolve FileID for each match from the repository
+	if b != nil && b.Repo != nil {
+		for i := range result.Matches {
+			file, err := b.Repo.GetDocumentFileByPath(ctx, docID, result.Matches[i].FilePath)
+			if err == nil && file != nil {
+				result.Matches[i].FileID = file.FileID
+			}
+		}
+	}
 
 	// 4. Save Cache
 	if sourcefiles.FUSE != nil {
