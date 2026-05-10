@@ -16,7 +16,7 @@ import (
 type GrepArgs struct {
 	Pattern       string `json:"pattern"`
 	ContextLines  int    `json:"context_lines,omitempty"`
-	IgnoreCase     bool   `json:"ignore_case,omitempty"`
+	IgnoreCase    bool   `json:"ignore_case,omitempty"`
 	ExtendedRegex bool   `json:"extended_regex,omitempty"`
 	DocumentID    string `json:"document_id,omitempty"`
 	WorkspaceID   string `json:"workspace_id,omitempty"`
@@ -131,7 +131,7 @@ func parseGrepOutput(output, targetPath string) GrepResult {
 
 	var matches []GrepMatch
 	lines := strings.Split(output, "\n")
-	
+
 	var currentMatch *GrepMatch
 
 	for _, line := range lines {
@@ -141,14 +141,14 @@ func parseGrepOutput(output, targetPath string) GrepResult {
 
 		// Robust parsing: grep output format is <path><sep><line><sep><content>
 		// where <sep> is ':' for matches and '-' for context.
-		
+
 		var separator string
 		isContext := false
-		
+
 		// Find the separator after the file path.
 		// If targetPath is a file, the line starts with targetPath.
 		// If targetPath is a directory, the line starts with targetPath + "/".
-		
+
 		idx := -1
 		if strings.HasPrefix(line, targetPath+":") {
 			idx = len(targetPath)
@@ -162,7 +162,7 @@ func parseGrepOutput(output, targetPath string) GrepResult {
 			// Find the first ':' or '-' after targetPath + "/"
 			cIdx := strings.Index(line[len(targetPath)+1:], ":")
 			hIdx := strings.Index(line[len(targetPath)+1:], "-")
-			
+
 			if cIdx != -1 && (hIdx == -1 || cIdx < hIdx) {
 				idx = len(targetPath) + 1 + cIdx
 				separator = ":"
@@ -180,7 +180,7 @@ func parseGrepOutput(output, targetPath string) GrepResult {
 
 		filePath := line[:idx]
 		remainder := line[idx+1:]
-		
+
 		// Remainder should be <line><sep><content>
 		parts := strings.SplitN(remainder, separator, 2)
 		if len(parts) < 2 {
@@ -192,7 +192,7 @@ func parseGrepOutput(output, targetPath string) GrepResult {
 			continue
 		}
 		content := parts[1]
-		
+
 		// Clean up relative path if it's inside targetPath
 		displayPath := strings.TrimPrefix(filePath, targetPath)
 		displayPath = strings.TrimPrefix(displayPath, "/")

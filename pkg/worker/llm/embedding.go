@@ -9,6 +9,7 @@ import (
 )
 
 const embeddingModel = "gemini-embedding-2"
+
 func (c *GeminiClient) EmbedText(ctx context.Context, text string) (pgvector.Vector, error) {
 	if c.client == nil {
 		return pgvector.Vector{}, fmt.Errorf("gemini client not initialized")

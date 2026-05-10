@@ -28,7 +28,7 @@ func TestExtractionTool_Zip(t *testing.T) {
 	// 3. Create Mock Zip Content
 	buf := new(bytes.Buffer)
 	zw := zip.NewWriter(buf)
-	
+
 	files := []struct {
 		Name, Body string
 	}{
@@ -130,14 +130,14 @@ func TestExtractionTool_SingleFile(t *testing.T) {
 		os.MkdirAll(dir, 0755)
 		destPath := filepath.Join(dir, source.Filename)
 		os.WriteFile(destPath, source.Content, 0644)
-		
+
 		fileRecord, _ := store.CreateDocumentFile(context.Background(), docID, source.Filename, source.MimeType, int64(len(source.Content)))
 		res, err := processSingleTextFile(context.Background(), b, source, fileRecord)
 		require.NoError(t, err)
 
 		// Verify markers
 		assert.Contains(t, res.RawText, "--- File: report.pdf (ID: file-report.pdf) ---")
-		
+
 		// Verify FS file exists
 		if _, err := os.Stat(destPath); err != nil {
 			t.Errorf("single file not saved to FS: %v", err)

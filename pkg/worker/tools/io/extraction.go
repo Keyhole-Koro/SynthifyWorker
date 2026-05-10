@@ -97,8 +97,8 @@ func NewExtractionTool(b *base.Context) (tool.Tool, error) {
 }
 
 func isZip(mimeType, filename string) bool {
-	return mimeType == "application/zip" || 
-		mimeType == "application/x-zip-compressed" || 
+	return mimeType == "application/zip" ||
+		mimeType == "application/x-zip-compressed" ||
 		strings.HasSuffix(strings.ToLower(filename), ".zip")
 }
 
@@ -109,7 +109,7 @@ func isMediaFile(mimeType string) bool {
 func processSingleTextFile(ctx context.Context, b *base.Context, source domain.SourceFile, record *domain.DocumentFile) (ExtractionResult, error) {
 	text := string(source.Content)
 	text = strings.ReplaceAll(text, "\x00", "")
-	
+
 	fileID := ""
 	if record != nil {
 		fileID = record.FileID
@@ -136,7 +136,7 @@ func processMedia(ctx context.Context, b *base.Context, source domain.SourceFile
 	if err != nil {
 		return ExtractionResult{}, fmt.Errorf("transcription failed: %w", err)
 	}
-	
+
 	fileID := ""
 	if record != nil {
 		fileID = record.FileID
@@ -189,7 +189,7 @@ func processZip(ctx context.Context, b *base.Context, source domain.SourceFile) 
 			log.Printf("extraction: failed to open file in zip %s: %v", relPath, err)
 			continue
 		}
-		
+
 		content, err := io.ReadAll(rc)
 		rc.Close()
 		if err != nil {

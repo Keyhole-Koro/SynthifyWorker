@@ -66,7 +66,7 @@ func TestGrepTool_FileIDPopulation(t *testing.T) {
 
 		// Clear mock repo to ensure only cache can provide the result
 		// (Actually, if we implement the cache correctly, it should store the FileID)
-		
+
 		// Second call (hits cache)
 		result, err := grepSearch(context.Background(), b, args)
 		require.NoError(t, err)
@@ -127,7 +127,7 @@ Line 3: Specialized keyword: SYNTHIFY-2026.
 Line 4: Another line here.
 Line 5: Case Insensitive Test.
 Line 6: Goodbye.`
-	
+
 	err = os.WriteFile(filepath.Join(wsPath, docID), []byte(content), 0644)
 	require.NoError(t, err)
 
@@ -172,7 +172,7 @@ Line 6: Goodbye.`
 	t.Run("Caching", func(t *testing.T) {
 		pattern := "World"
 		args := GrepArgs{Pattern: pattern}
-		
+
 		// First call (populates cache)
 		_, err := grepSearch(ctx, b, args)
 		require.NoError(t, err)
@@ -187,7 +187,7 @@ Line 6: Goodbye.`
 		// We'll modify the source file to prove cache is used
 		err = os.WriteFile(filepath.Join(wsPath, docID), []byte("Empty"), 0644)
 		require.NoError(t, err)
-		
+
 		result, err := grepSearch(ctx, b, args)
 		require.NoError(t, err)
 

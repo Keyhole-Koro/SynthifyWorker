@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/synthify/backend/apps/worker/pkg/worker"
+	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
 	"github.com/synthify/backend/packages/shared/app"
 	"github.com/synthify/backend/packages/shared/config"
 	treev1connect "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1/treev1connect"
@@ -13,8 +15,6 @@ import (
 	"github.com/synthify/backend/packages/shared/middleware"
 	"github.com/synthify/backend/packages/shared/repository/postgres"
 	"github.com/synthify/backend/packages/shared/storage"
-	"github.com/synthify/backend/apps/worker/pkg/worker"
-	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/model/gemini"
 	"google.golang.org/genai"

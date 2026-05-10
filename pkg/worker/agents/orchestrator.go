@@ -38,7 +38,7 @@ type ToolLogger interface {
 
 var stageTools = map[string]string{
 	"generate_brief":         "briefing",
-	"goal_driven_synthesis": "synthesis",
+	"goal_driven_synthesis":  "synthesis",
 	"persist_knowledge_tree": "persistence",
 }
 
@@ -230,7 +230,7 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 				if err != nil {
 					resJSON, _ = json.Marshal(map[string]string{"error": err.Error()})
 				}
-				
+
 				jobIDPtr := orch.currentJobID.Load()
 				jobID := ""
 				if jobIDPtr != nil {
