@@ -54,7 +54,9 @@ func generateBrief(ctx context.Context, llmClient base.LLMClient, outline []stri
 - level01_hints: suggested top-level labels for a knowledge tree (up to 5)
 - outline: the original headings unchanged
 
-Respond only with valid JSON matching the schema.`,
+Rules:
+- NO MARKDOWN: Never use #, **, or other Markdown symbols. Use plain text.
+- JSON: Respond only with valid JSON matching the schema.`,
 		UserPrompt: "Section headings:\n" + sb.String(),
 		Schema:     domain.DocumentBrief{},
 	})

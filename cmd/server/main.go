@@ -15,7 +15,6 @@ import (
 	"github.com/synthify/backend/packages/shared/storage"
 	"github.com/synthify/backend/apps/worker/pkg/worker"
 	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
-	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/model/gemini"
 	"google.golang.org/genai"
@@ -24,7 +23,7 @@ import (
 func main() {
 	ctx := context.Background()
 	cfg := config.LoadWorker()
-	sourcefiles.FUSE = storage.NewFUSEHandler(cfg.GCSFuseMountPath)
+	fs := storage.NewFileSystem(cfg.GCSFuseMountPath)
 
 	appCtx := app.Bootstrap(ctx, cfg.GCSUploadURLBase, cfg.FirebaseProjectID)
 	store := appCtx.Store
@@ -44,12 +43,12 @@ func main() {
 		if err != nil {
 			log.Printf("Gemini model disabled: %v", err)
 		}
-		embedder = llm.NewGeminiClient(llmCfg)
+		embedder = llm.NewGeminiClient(llmCfg, fs)
 	} else {
 		log.Printf("Gemini API key not configured; worker will use deterministic fallback processing")
 	}
 
-	workerService, err := worker.NewWorkerWithNotifier(store, store, notifier, adkModel, embedder, embedder)
+	workerService, err := worker.NewWorkerWithNotifier(store, store, notifier, adkModel, embedder, embedder, fs)
 	if err != nil {
 		log.Fatal(err)
 	}

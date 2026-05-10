@@ -58,22 +58,28 @@ func synthesize(ctx context.Context, llmClient base.LLMClient, args SynthesisArg
 	}
 
 	raw, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
-		SystemPrompt: `You are a knowledge architect. Convert document chunks into a hierarchical knowledge tree.
+		SystemPrompt: `You are a Lead Knowledge Architect. Convert document chunks into a high-fidelity, hierarchical knowledge tree.
 
-Rules:
-- Use parent_local_id to express parent-child relationships. Root-level items have empty parent_local_id.
+Rules for "content" (STRICT):
+- NO MARKDOWN: Never use #, ##, **, or [text](url). Use HTML tags only.
+- RICH HTML: Use a variety of structural tags and CSS classes to make the content "alive":
+  - <p class="lede">: for important introductory paragraphs.
+  - <p class="eyebrow">: for small, bold labels at the top of sections.
+  - <div class="hero-block">: for featured summaries with a visual punch.
+  - <div class="callout-grid">: for 2-column comparison or fact grids.
+  - <div class="stat-card">: inside a grid or alone, use <strong>Number</strong> <span>Label</span>.
+  - <div class="tip-box">: for helpful tips or additional context.
+  - <blockquote>: for direct quotes from the source.
+  - <table>: for technical data or side-by-side specs.
+  - <details><summary>: for technical deep-dives that should be hidden by default.
+  - <a data-paper-id="{local_id}">: to link to child items. Use the EXACT local_id.
+- COMPOSITION: Combine these elements to create a professional technical report feel.
+
+Rules for Structure:
+- Use parent_local_id to express relationships. Root-level items have empty parent_local_id.
 - Assign local_id as "item_1", "item_2", etc.
-- level: 1 for root-level items, 2 for children, 3 for grandchildren.
-- description: concise explanation grounded in the source text. No hallucination.
-- content: 1-3 <p> paragraphs. Use <strong> for key terms.
-  Link to child items with <a data-paper-id="{local_id}">term</a> so readers can expand them inline.
-  You may also use <blockquote> for quotations, <table> for tabular data,
-  <div class="compare-grid"><div class="compare-col">...</div><div class="compare-col">...</div></div> for side-by-side comparisons,
-  and <div class="callout">...</div> for warnings or key takeaways.
-- override_css: optional CSS string to style this item's content. Use only when a custom layout
-  genuinely improves readability (e.g. defining .compare-grid or .callout). Leave empty otherwise.
-- source_chunk_ids: list of chunk IDs referenced (format: "{document_id}_chunk_{index}").
-- The document brief and glossary are in your system context — use them.`,
+- description: a very short, plain-text summary for list views.
+- source_chunk_ids: list of chunk IDs referenced (format: "{document_id}_chunk_{index}").`,
 		UserPrompt: fmt.Sprintf("document_id: %s\nInstruction: %s\n\nChunks:\n%s", args.DocumentID, instruction, sb.String()),
 		Schema:     llmOutput{},
 	})

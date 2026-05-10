@@ -53,13 +53,13 @@ func NewExtractionTool(b *base.Context) (tool.Tool, error) {
 			WorkspaceID: wsID,
 			DocumentID:  docID,
 		}
-		if err := sourcefiles.Fetch(ctx, &source); err != nil {
+		if err := sourcefiles.Fetch(ctx, b.FS, &source); err != nil {
 			return ExtractionResult{}, err
 		}
 
 		// Ensure document directory exists on FUSE
-		if sourcefiles.FUSE != nil {
-			dir := sourcefiles.FUSE.ResolvePath(wsID, docID)
+		if b.FS != nil {
+			dir := b.FS.DocPath(wsID, docID)
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				return ExtractionResult{}, fmt.Errorf("failed to create document dir: %w", err)
 			}
@@ -72,8 +72,8 @@ func NewExtractionTool(b *base.Context) (tool.Tool, error) {
 
 		// Single file processing: Save to FUSE first then handle by type
 		destPath := ""
-		if sourcefiles.FUSE != nil {
-			destPath = filepath.Join(sourcefiles.FUSE.ResolvePath(wsID, docID), source.Filename)
+		if b.FS != nil {
+			destPath = filepath.Join(b.FS.DocPath(wsID, docID), source.Filename)
 			if err := os.WriteFile(destPath, source.Content, 0644); err != nil {
 				log.Printf("extraction: failed to save single file to FUSE: %v", err)
 			}
@@ -151,12 +151,12 @@ func processMedia(ctx context.Context, b *base.Context, source domain.SourceFile
 }
 
 func processZip(ctx context.Context, b *base.Context, source domain.SourceFile) (ExtractionResult, error) {
-	if sourcefiles.FUSE == nil || sourcefiles.FUSE.MountPath == "" {
+	if b.FS == nil || b.FS.MountPath == "" {
 		return ExtractionResult{}, fmt.Errorf("%w: FUSE mount required for ZIP extraction", domain.ErrCritical)
 	}
 
 	// Extraction base path: /mnt/gcs/{wsID}/{docID}/
-	extractDir := sourcefiles.FUSE.ResolvePath(source.WorkspaceID, source.DocumentID)
+	extractDir := b.FS.DocPath(source.WorkspaceID, source.DocumentID)
 	if err := os.MkdirAll(extractDir, 0755); err != nil {
 		return ExtractionResult{}, fmt.Errorf("failed to create extraction dir: %w", err)
 	}

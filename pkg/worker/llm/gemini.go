@@ -15,6 +15,7 @@ import (
 	"github.com/synthify/backend/packages/shared/config"
 	"github.com/synthify/backend/packages/shared/domain"
 	"github.com/synthify/backend/packages/shared/joblog"
+	"github.com/synthify/backend/packages/shared/storage"
 	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"google.golang.org/genai"
 )
@@ -22,9 +23,10 @@ import (
 type GeminiClient struct {
 	client *genai.Client
 	model  string
+	fs     *storage.FileSystem
 }
 
-func NewGeminiClient(cfg config.LLM) *GeminiClient {
+func NewGeminiClient(cfg config.LLM, fs *storage.FileSystem) *GeminiClient {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  cfg.GeminiAPIKey,
@@ -33,12 +35,13 @@ func NewGeminiClient(cfg config.LLM) *GeminiClient {
 	if err != nil {
 		// NewClient during construction might be risky if API key is missing,
 		// but let's follow the pattern.
-		return &GeminiClient{model: cfg.GeminiModel}
+		return &GeminiClient{model: cfg.GeminiModel, fs: fs}
 	}
 
 	return &GeminiClient{
 		client: client,
 		model:  cfg.GeminiModel,
+		fs:     fs,
 	}
 }
 
@@ -136,7 +139,7 @@ func (c *GeminiClient) buildContents(ctx context.Context, userPrompt string, sou
 }
 
 func (c *GeminiClient) uploadSourceFile(ctx context.Context, source domain.SourceFile) (*genai.File, error) {
-	if err := sourcefiles.Fetch(ctx, &source); err != nil {
+	if err := sourcefiles.Fetch(ctx, c.fs, &source); err != nil {
 		return nil, fmt.Errorf("fetch source file %s: %w", source.Filename, err)
 	}
 

@@ -28,7 +28,7 @@ type Orchestrator struct {
 	currentJobID atomic.Pointer[string]
 	base         *base.Context
 	repo         repository.CheckpointRepository
-	fuse         *storage.FUSEHandler
+	fs           *storage.FileSystem
 }
 
 // ToolLogger matches the repository interface for logging tool calls.
@@ -44,12 +44,12 @@ var stageTools = map[string]string{
 
 const currentCheckpointVersion = 1
 
-func NewOrchestrator(m model.LLM, b *base.Context, repo any, fuse *storage.FUSEHandler) (*Orchestrator, error) {
+func NewOrchestrator(m model.LLM, b *base.Context, repo any, fs *storage.FileSystem) (*Orchestrator, error) {
 	checkpointRepo, _ := repo.(repository.CheckpointRepository)
 	orch := &Orchestrator{
 		base: b,
 		repo: checkpointRepo,
-		fuse: fuse,
+		fs:   fs,
 	}
 
 	glossary := memory.NewGlossary()
@@ -118,7 +118,7 @@ func NewOrchestrator(m model.LLM, b *base.Context, repo any, fuse *storage.FUSEH
 	if err != nil {
 		return nil, err
 	}
-	summary, err := process.NewSummaryTool()
+	summary, err := process.NewSummaryTool(b)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +186,7 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 				}
 
 				stage := stageTools[t.Name()]
-				if stage == "" || orch.repo == nil || orch.fuse == nil {
+				if stage == "" || orch.repo == nil || orch.fs == nil {
 					return nil, nil
 				}
 
@@ -198,7 +198,7 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 
 				// Check for existing checkpoint
 				var envelope domain.CheckpointEnvelope
-				found, err := orch.fuse.ReadCheckpoint(jobID, stage, &envelope)
+				found, err := orch.fs.ReadCheckpoint(jobID, stage, &envelope)
 				if err != nil || !found {
 					_ = orch.repo.UpsertStageRunning(ctx, jobID, stage)
 					return nil, nil
@@ -243,7 +243,7 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 
 				// Save checkpoint if successful and stage-able
 				stage := stageTools[t.Name()]
-				if err == nil && stage != "" && jobID != "" && orch.repo != nil && orch.fuse != nil {
+				if err == nil && stage != "" && jobID != "" && orch.repo != nil && orch.fs != nil {
 					docID := ""
 					wsID := ""
 					if b.Job != nil {
@@ -261,8 +261,8 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 						Inputs:        args,
 						Outputs:       result,
 					}
-					if writeErr := orch.fuse.WriteCheckpoint(jobID, stage, envelope); writeErr == nil {
-						_ = orch.repo.MarkStageSucceeded(ctx, jobID, stage, orch.fuse.ResolveCheckpointPath(jobID, stage))
+					if writeErr := orch.fs.WriteCheckpoint(jobID, stage, envelope); writeErr == nil {
+						_ = orch.repo.MarkStageSucceeded(ctx, jobID, stage, orch.fs.CheckpointPath(jobID, stage))
 					} else {
 						log.Printf("orchestrator: failed to write checkpoint for stage %s: %v", stage, writeErr)
 					}

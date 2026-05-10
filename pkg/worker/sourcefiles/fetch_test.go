@@ -20,10 +20,10 @@ func TestFetchCachesContent(t *testing.T) {
 	defer server.Close()
 
 	file := domain.SourceFile{Filename: "sample.txt", URI: server.URL}
-	if err := Fetch(context.Background(), &file); err != nil {
+	if err := Fetch(context.Background(), nil, &file); err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
-	if err := Fetch(context.Background(), &file); err != nil {
+	if err := Fetch(context.Background(), nil, &file); err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
 	if got := hits.Load(); got != 1 {

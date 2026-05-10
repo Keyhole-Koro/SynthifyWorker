@@ -8,17 +8,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"github.com/synthify/backend/packages/shared/repository/mock"
 	"github.com/synthify/backend/packages/shared/storage"
 )
 
 func TestGrepTool_FileIDPopulation(t *testing.T) {
-	// 1. Setup temporary FUSE mount
+	// 1. Setup temporary FS mount
 	tmpDir := t.TempDir()
-	sourcefiles.FUSE = storage.NewFUSEHandler(tmpDir)
-	defer func() { sourcefiles.FUSE = nil }()
+	fs := storage.NewFileSystem(tmpDir)
 
 	wsID := "ws_123"
 	docID := "doc_456"
@@ -41,6 +39,7 @@ func TestGrepTool_FileIDPopulation(t *testing.T) {
 
 	b := &base.Context{
 		Repo: store,
+		FS:   fs,
 		Job: &base.JobContext{
 			WorkspaceID: wsID,
 			DocumentID:  docID,
@@ -113,7 +112,7 @@ func TestGrepTool_FileIDPopulation(t *testing.T) {
 }
 
 func TestGrepTool(t *testing.T) {
-	// 1. Setup temporary FUSE mount simulation
+	// 1. Setup temporary FS mount simulation
 	tmpDir := t.TempDir()
 
 	wsID := "test-ws"
@@ -132,11 +131,11 @@ Line 6: Goodbye.`
 	err = os.WriteFile(filepath.Join(wsPath, docID), []byte(content), 0644)
 	require.NoError(t, err)
 
-	// 2. Initialize FUSE handler
-	sourcefiles.FUSE = storage.NewFUSEHandler(tmpDir)
-	defer func() { sourcefiles.FUSE = nil }()
+	// 2. Initialize FS handler
+	fs := storage.NewFileSystem(tmpDir)
 
 	b := &base.Context{
+		FS: fs,
 		Job: &base.JobContext{
 			WorkspaceID: wsID,
 			DocumentID:  docID,

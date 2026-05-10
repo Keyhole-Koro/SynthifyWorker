@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"github.com/synthify/backend/packages/shared/domain"
 	"github.com/synthify/backend/packages/shared/repository/mock"
@@ -19,10 +18,9 @@ import (
 )
 
 func TestExtractionTool_Zip(t *testing.T) {
-	// 1. Setup Mock FUSE
+	// 1. Setup Mock FS
 	tmpDir := t.TempDir()
-	sourcefiles.FUSE = storage.NewFUSEHandler(tmpDir)
-	defer func() { sourcefiles.FUSE = nil }()
+	fs := storage.NewFileSystem(tmpDir)
 
 	// 2. Setup Mock Repo
 	store := mock.NewStore()
@@ -55,6 +53,7 @@ func TestExtractionTool_Zip(t *testing.T) {
 	docID := "doc_zip"
 	b := &base.Context{
 		Repo: store,
+		FS:   fs,
 		Job: &base.JobContext{
 			WorkspaceID: wsID,
 			DocumentID:  docID,
@@ -82,10 +81,10 @@ func TestExtractionTool_Zip(t *testing.T) {
 			t.Errorf("missing go content")
 		}
 
-		// Verify files on FUSE mount
+		// Verify files on FS mount
 		extractPath := filepath.Join(tmpDir, wsID, docID)
 		if _, err := os.Stat(filepath.Join(extractPath, "src/main.go")); err != nil {
-			t.Errorf("file not extracted to FUSE: %v", err)
+			t.Errorf("file not extracted to FS: %v", err)
 		}
 
 		// Verify DB entries
@@ -97,10 +96,9 @@ func TestExtractionTool_Zip(t *testing.T) {
 }
 
 func TestExtractionTool_SingleFile(t *testing.T) {
-	// 1. Setup Mock FUSE
+	// 1. Setup Mock FS
 	tmpDir := t.TempDir()
-	sourcefiles.FUSE = storage.NewFUSEHandler(tmpDir)
-	defer func() { sourcefiles.FUSE = nil }()
+	fs := storage.NewFileSystem(tmpDir)
 
 	// 2. Setup Mock Repo
 	store := mock.NewStore()
@@ -110,6 +108,7 @@ func TestExtractionTool_SingleFile(t *testing.T) {
 	docID := "doc_single"
 	b := &base.Context{
 		Repo: store,
+		FS:   fs,
 		Job: &base.JobContext{
 			WorkspaceID: wsID,
 			DocumentID:  docID,
@@ -126,8 +125,8 @@ func TestExtractionTool_SingleFile(t *testing.T) {
 			DocumentID:  docID,
 		}
 
-		// Save to FUSE
-		dir := sourcefiles.FUSE.ResolvePath(wsID, docID)
+		// Save to FS
+		dir := b.FS.DocPath(wsID, docID)
 		os.MkdirAll(dir, 0755)
 		destPath := filepath.Join(dir, source.Filename)
 		os.WriteFile(destPath, source.Content, 0644)
@@ -139,9 +138,9 @@ func TestExtractionTool_SingleFile(t *testing.T) {
 		// Verify markers
 		assert.Contains(t, res.RawText, "--- File: report.pdf (ID: file-report.pdf) ---")
 		
-		// Verify FUSE file exists
+		// Verify FS file exists
 		if _, err := os.Stat(destPath); err != nil {
-			t.Errorf("single file not saved to FUSE: %v", err)
+			t.Errorf("single file not saved to FS: %v", err)
 		}
 	})
 }

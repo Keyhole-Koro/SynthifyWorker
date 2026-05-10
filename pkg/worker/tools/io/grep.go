@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
@@ -68,19 +67,19 @@ func grepSearch(ctx context.Context, b *base.Context, args GrepArgs) (GrepResult
 	cacheKeyParts := fmt.Sprintf("%s|%d|%v|%v", args.Pattern, contextLines, args.IgnoreCase, args.ExtendedRegex)
 	cacheKey := fmt.Sprintf("%x", sha256.Sum256([]byte(cacheKeyParts)))
 	var cached GrepResult
-	if sourcefiles.FUSE != nil {
-		found, err := sourcefiles.FUSE.ReadCache(docID, "grep", cacheKey, &cached)
+	if b.FS != nil {
+		found, err := b.FS.ReadCache(docID, "grep", cacheKey, &cached)
 		if err == nil && found {
 			return cached, nil
 		}
 	}
 
 	// 2. Execute Grep
-	if sourcefiles.FUSE == nil || sourcefiles.FUSE.MountPath == "" {
+	if b.FS == nil || b.FS.MountPath == "" {
 		return GrepResult{}, fmt.Errorf("FUSE mount is not available for grep_search")
 	}
 
-	targetPath := sourcefiles.FUSE.ResolvePath(wsID, docID)
+	targetPath := b.FS.DocPath(wsID, docID)
 	// We use -r (recursive) to support zip-extracted directories, and -n (line number)
 	// -H (always print filename) for consistent parsing.
 	// -B and -A for context.
@@ -118,8 +117,8 @@ func grepSearch(ctx context.Context, b *base.Context, args GrepArgs) (GrepResult
 	}
 
 	// 4. Save Cache
-	if sourcefiles.FUSE != nil {
-		_ = sourcefiles.FUSE.WriteCache(docID, "grep", cacheKey, result)
+	if b.FS != nil {
+		_ = b.FS.WriteCache(docID, "grep", cacheKey, result)
 	}
 
 	return result, nil

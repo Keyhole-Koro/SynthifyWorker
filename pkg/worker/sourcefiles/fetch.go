@@ -12,20 +12,18 @@ import (
 	"github.com/synthify/backend/packages/shared/storage"
 )
 
-func EnsureFetched(ctx context.Context, files []domain.SourceFile) ([]domain.SourceFile, error) {
+func EnsureFetched(ctx context.Context, fs *storage.FileSystem, files []domain.SourceFile) ([]domain.SourceFile, error) {
 	out := make([]domain.SourceFile, len(files))
 	copy(out, files)
 	for i := range out {
-		if err := Fetch(ctx, &out[i]); err != nil {
+		if err := Fetch(ctx, fs, &out[i]); err != nil {
 			return nil, fmt.Errorf("fetch[%d] %s: %w", i, out[i].Filename, err)
 		}
 	}
 	return out, nil
 }
 
-var FUSE *storage.FUSEHandler
-
-func Fetch(ctx context.Context, file *domain.SourceFile) error {
+func Fetch(ctx context.Context, fs *storage.FileSystem, file *domain.SourceFile) error {
 	if file == nil {
 		return fmt.Errorf("source file is nil")
 	}
@@ -34,8 +32,8 @@ func Fetch(ctx context.Context, file *domain.SourceFile) error {
 	}
 
 	// Try GCS FUSE mount if available via shared handler
-	if FUSE != nil {
-		ok, err := FUSE.PopulateSourceFile(file)
+	if fs != nil {
+		ok, err := fs.PopulateSourceFile(file)
 		if err == nil && ok {
 			return nil
 		}

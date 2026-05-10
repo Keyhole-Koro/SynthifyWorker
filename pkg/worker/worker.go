@@ -11,7 +11,6 @@ import (
 	connect "connectrpc.com/connect"
 	"github.com/synthify/backend/apps/worker/pkg/worker/agents"
 	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
-	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
@@ -20,6 +19,7 @@ import (
 	"github.com/synthify/backend/packages/shared/joblog"
 	"github.com/synthify/backend/packages/shared/jobstatus"
 	"github.com/synthify/backend/packages/shared/repository"
+	"github.com/synthify/backend/packages/shared/storage"
 	"github.com/synthify/backend/packages/shared/util"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/runner"
@@ -51,19 +51,20 @@ type Worker struct {
 
 type ExecutePlanRequest = domain.ExecutePlanRequest
 
-func NewWorker(repo Repository, m model.LLM, embedder base.Embedder, llmClient base.LLMClient) (*Worker, error) {
-	return NewWorkerWithNotifier(repo, repo, nil, m, embedder, llmClient)
+func NewWorker(repo Repository, m model.LLM, embedder base.Embedder, llmClient base.LLMClient, fs *storage.FileSystem) (*Worker, error) {
+	return NewWorkerWithNotifier(repo, repo, nil, m, embedder, llmClient, fs)
 }
 
-func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM, embedder base.Embedder, llmClient base.LLMClient) (*Worker, error) {
+func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobstatus.Notifier, m model.LLM, embedder base.Embedder, llmClient base.LLMClient, fs *storage.FileSystem) (*Worker, error) {
 	usage := base.NewUsageLimiter(treeRepo)
 	b := &base.Context{
 		Repo:     treeRepo,
 		Embedder: embedder,
 		LLM:      base.NewCountingLLMClient(llmClient, usage),
 		Usage:    usage,
+		FS:       fs,
 	}
-	orch, err := agents.NewOrchestrator(m, b, repo, sourcefiles.FUSE)
+	orch, err := agents.NewOrchestrator(m, b, repo, fs)
 	if err != nil {
 		return nil, err
 	}
