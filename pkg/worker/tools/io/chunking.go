@@ -13,6 +13,7 @@ import (
 
 type ChunkingArgs struct {
 	DocumentID string `json:"document_id"`
+	FileID     string `json:"file_id"`
 	RawText    string `json:"raw_text"`
 }
 
@@ -56,6 +57,7 @@ func NewChunkingTool(b *base.Context) (tool.Tool, error) {
 				domainChunks = append(domainChunks, &domain.DocumentChunk{
 					ChunkID:    fmt.Sprintf("%s_chunk_%d", args.DocumentID, chunk.ChunkIndex),
 					DocumentID: args.DocumentID,
+					FileID:     args.FileID,
 					Heading:    chunk.Heading,
 					Text:       chunk.Text,
 					Embedding:  vec.Slice(),

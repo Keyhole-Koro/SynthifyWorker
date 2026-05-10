@@ -11,10 +11,15 @@ import (
 )
 
 type PersistenceArgs struct {
-	JobID       string                   `json:"job_id"`
-	DocumentID  string                   `json:"document_id"`
-	WorkspaceID string                   `json:"workspace_id"`
-	Items       []domain.SynthesizedItem `json:"items"`
+	JobID       string            `json:"job_id"`
+	DocumentID  string            `json:"document_id"`
+	WorkspaceID string            `json:"workspace_id"`
+	Items       []PersistenceItem `json:"items"`
+}
+
+type PersistenceItem struct {
+	domain.SynthesizedItem
+	FileID string `json:"file_id"`
 }
 
 type PersistenceResult struct {
@@ -77,7 +82,7 @@ func NewPersistenceTool(b *base.Context) (tool.Tool, error) {
 			}
 			itemIDs[item.LocalID] = createdItem.ItemID
 			for _, chunkID := range item.SourceChunkIDs {
-				if err := b.Repo.UpsertItemSource(ctx, createdItem.ItemID, args.DocumentID, "", chunkID, item.Description, 0.75); err != nil {
+				if err := b.Repo.UpsertItemSource(ctx, createdItem.ItemID, args.DocumentID, item.FileID, chunkID, item.Description, 0.75); err != nil {
 					return PersistenceResult{}, err
 				}
 			}

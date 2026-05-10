@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"github.com/synthify/backend/packages/shared/domain"
@@ -70,13 +72,11 @@ func TestExtractionTool_Zip(t *testing.T) {
 		}
 
 		res, err := processZip(context.Background(), b, source)
-		if err != nil {
-			t.Fatalf("processZip failed: %v", err)
-		}
+		require.NoError(t, err)
 
-		// Verify combined text output
-		if !strings.Contains(res.RawText, "--- File: readme.txt ---") {
-			t.Errorf("missing readme marker")
+		// Verify combined text output (with new ID markers)
+		if !strings.Contains(res.RawText, "--- File: readme.txt (ID: file-readme.txt) ---") {
+			t.Errorf("missing readme marker, got: %q", res.RawText)
 		}
 		if !strings.Contains(res.RawText, "package main") {
 			t.Errorf("missing go content")
@@ -92,6 +92,56 @@ func TestExtractionTool_Zip(t *testing.T) {
 		docFiles, _ := store.ListDocumentFiles(context.Background(), docID)
 		if len(docFiles) != 3 {
 			t.Errorf("expected 3 DB file records, got %d", len(docFiles))
+		}
+	})
+}
+
+func TestExtractionTool_SingleFile(t *testing.T) {
+	// 1. Setup Mock FUSE
+	tmpDir := t.TempDir()
+	sourcefiles.FUSE = storage.NewFUSEHandler(tmpDir)
+	defer func() { sourcefiles.FUSE = nil }()
+
+	// 2. Setup Mock Repo
+	store := mock.NewStore()
+
+	// 3. Setup Context
+	wsID := "ws_single"
+	docID := "doc_single"
+	b := &base.Context{
+		Repo: store,
+		Job: &base.JobContext{
+			WorkspaceID: wsID,
+			DocumentID:  docID,
+		},
+	}
+
+	t.Run("Process single PDF and verify directory structure", func(t *testing.T) {
+		source := domain.SourceFile{
+			Filename:    "report.pdf",
+			URI:         "https://example.com/report.pdf",
+			MimeType:    "application/pdf",
+			Content:     []byte("%PDF-1.4 Fake PDF Content"),
+			WorkspaceID: wsID,
+			DocumentID:  docID,
+		}
+
+		// Save to FUSE
+		dir := sourcefiles.FUSE.ResolvePath(wsID, docID)
+		os.MkdirAll(dir, 0755)
+		destPath := filepath.Join(dir, source.Filename)
+		os.WriteFile(destPath, source.Content, 0644)
+		
+		fileRecord, _ := store.CreateDocumentFile(context.Background(), docID, source.Filename, source.MimeType, int64(len(source.Content)))
+		res, err := processSingleTextFile(context.Background(), b, source, fileRecord)
+		require.NoError(t, err)
+
+		// Verify markers
+		assert.Contains(t, res.RawText, "--- File: report.pdf (ID: file-report.pdf) ---")
+		
+		// Verify FUSE file exists
+		if _, err := os.Stat(destPath); err != nil {
+			t.Errorf("single file not saved to FUSE: %v", err)
 		}
 	})
 }

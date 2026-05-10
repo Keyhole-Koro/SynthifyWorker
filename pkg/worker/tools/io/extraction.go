@@ -35,7 +35,7 @@ type ExtractionResult struct {
 func NewExtractionTool(b *base.Context) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "extract_text",
-		Description: "Extracts raw text from a given document URI (PDF, TXT, ZIP, etc.) or transcribes media files (audio/video).",
+		Description: "Extracts raw text from a given document URI (PDF, TXT, ZIP, etc.) or transcribes media files (audio/video). Unified as a directory-based project.",
 	}, func(ctx tool.Context, args ExtractionArgs) (ExtractionResult, error) {
 		wsID := args.WorkspaceID
 		if wsID == "" && b != nil && b.Job != nil {
@@ -48,6 +48,7 @@ func NewExtractionTool(b *base.Context) (tool.Tool, error) {
 
 		source := domain.SourceFile{
 			URI:         args.FileURI,
+			Filename:    filepath.Base(args.FileURI), // Fallback filename
 			MimeType:    args.MimeType,
 			WorkspaceID: wsID,
 			DocumentID:  docID,
@@ -56,16 +57,42 @@ func NewExtractionTool(b *base.Context) (tool.Tool, error) {
 			return ExtractionResult{}, err
 		}
 
-		// Routing: ZIP vs Single File vs Media
+		// Ensure document directory exists on FUSE
+		if sourcefiles.FUSE != nil {
+			dir := sourcefiles.FUSE.ResolvePath(wsID, docID)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return ExtractionResult{}, fmt.Errorf("failed to create document dir: %w", err)
+			}
+		}
+
+		// Routing: ZIP vs Single File
 		if isZip(source.MimeType, source.Filename) {
 			return processZip(ctx, b, source)
 		}
 
-		if isMediaFile(source.MimeType) {
-			return processMedia(ctx, b, source)
+		// Single file processing: Save to FUSE first then handle by type
+		destPath := ""
+		if sourcefiles.FUSE != nil {
+			destPath = filepath.Join(sourcefiles.FUSE.ResolvePath(wsID, docID), source.Filename)
+			if err := os.WriteFile(destPath, source.Content, 0644); err != nil {
+				log.Printf("extraction: failed to save single file to FUSE: %v", err)
+			}
 		}
 
-		return processTextFile(ctx, b, source)
+		var fileRecord *domain.DocumentFile
+		if b != nil && b.Repo != nil {
+			var err error
+			fileRecord, err = b.Repo.CreateDocumentFile(ctx, source.DocumentID, source.Filename, source.MimeType, int64(len(source.Content)))
+			if err != nil {
+				log.Printf("extraction: failed to create DB record for single file: %v", err)
+			}
+		}
+
+		if isMediaFile(source.MimeType) {
+			return processMedia(ctx, b, source, fileRecord)
+		}
+
+		return processSingleTextFile(ctx, b, source, fileRecord)
 	})
 }
 
@@ -79,25 +106,26 @@ func isMediaFile(mimeType string) bool {
 	return strings.HasPrefix(mimeType, "audio/") || strings.HasPrefix(mimeType, "video/")
 }
 
-func processTextFile(ctx context.Context, b *base.Context, source domain.SourceFile) (ExtractionResult, error) {
-	// For single files, we should also ensure a document_files record exists
-	if b != nil && b.Repo != nil {
-		_, _ = b.Repo.CreateDocumentFile(ctx, source.DocumentID, source.Filename, source.MimeType, int64(len(source.Content)))
-	}
-
+func processSingleTextFile(ctx context.Context, b *base.Context, source domain.SourceFile, record *domain.DocumentFile) (ExtractionResult, error) {
 	text := string(source.Content)
 	text = strings.ReplaceAll(text, "\x00", "")
-	return ExtractionResult{RawText: strings.TrimSpace(text)}, nil
-}
-
-func processMedia(ctx context.Context, b *base.Context, source domain.SourceFile) (ExtractionResult, error) {
-	if b == nil || b.LLM == nil {
-		return ExtractionResult{}, fmt.Errorf("LLM client not configured for transcription")
+	
+	fileID := ""
+	if record != nil {
+		fileID = record.FileID
 	}
 
-	// Record the media file as a document file entry
-	if b.Repo != nil {
-		_, _ = b.Repo.CreateDocumentFile(ctx, source.DocumentID, source.Filename, source.MimeType, int64(len(source.Content)))
+	resultText := strings.TrimSpace(text)
+	if fileID != "" {
+		resultText = fmt.Sprintf("--- File: %s (ID: %s) ---\n%s", source.Filename, fileID, resultText)
+	}
+
+	return ExtractionResult{RawText: resultText}, nil
+}
+
+func processMedia(ctx context.Context, b *base.Context, source domain.SourceFile, record *domain.DocumentFile) (ExtractionResult, error) {
+	if b == nil || b.LLM == nil {
+		return ExtractionResult{}, fmt.Errorf("%w: LLM client not configured for transcription", domain.ErrCritical)
 	}
 
 	text, err := b.LLM.GenerateText(ctx, llm.TextRequest{
@@ -108,12 +136,23 @@ func processMedia(ctx context.Context, b *base.Context, source domain.SourceFile
 	if err != nil {
 		return ExtractionResult{}, fmt.Errorf("transcription failed: %w", err)
 	}
-	return ExtractionResult{RawText: strings.TrimSpace(text)}, nil
+	
+	fileID := ""
+	if record != nil {
+		fileID = record.FileID
+	}
+
+	resultText := strings.TrimSpace(text)
+	if fileID != "" {
+		resultText = fmt.Sprintf("--- Media File: %s (ID: %s) ---\n%s", source.Filename, fileID, resultText)
+	}
+
+	return ExtractionResult{RawText: resultText}, nil
 }
 
 func processZip(ctx context.Context, b *base.Context, source domain.SourceFile) (ExtractionResult, error) {
 	if sourcefiles.FUSE == nil || sourcefiles.FUSE.MountPath == "" {
-		return ExtractionResult{}, fmt.Errorf("FUSE mount required for ZIP extraction")
+		return ExtractionResult{}, fmt.Errorf("%w: FUSE mount required for ZIP extraction", domain.ErrCritical)
 	}
 
 	// Extraction base path: /mnt/gcs/{wsID}/{docID}/
@@ -124,10 +163,12 @@ func processZip(ctx context.Context, b *base.Context, source domain.SourceFile) 
 
 	r, err := zip.NewReader(bytes.NewReader(source.Content), int64(len(source.Content)))
 	if err != nil {
-		return ExtractionResult{}, fmt.Errorf("invalid zip file: %w", err)
+		return ExtractionResult{}, fmt.Errorf("%w: invalid zip file format", domain.ErrJobError)
 	}
 
 	var combinedText strings.Builder
+	extractedCount := 0
+
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -138,49 +179,67 @@ func processZip(ctx context.Context, b *base.Context, source domain.SourceFile) 
 
 		// Create parent dirs
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			log.Printf("extraction: failed to create parent dir for %s: %v", relPath, err)
 			continue
 		}
 
 		// Extract file
 		rc, err := f.Open()
 		if err != nil {
+			log.Printf("extraction: failed to open file in zip %s: %v", relPath, err)
 			continue
 		}
 		
 		content, err := io.ReadAll(rc)
 		rc.Close()
 		if err != nil {
+			log.Printf("extraction: failed to read file content from zip %s: %v", relPath, err)
 			continue
 		}
 
 		if err := os.WriteFile(destPath, content, 0644); err != nil {
-			log.Printf("failed to write extracted file %s: %v", relPath, err)
+			log.Printf("extraction: failed to write extracted file %s to FUSE: %v", relPath, err)
 			continue
 		}
 
+		extractedCount++
+
 		// Detect MIME and Record to DB
 		mimeType := http.DetectContentType(content)
+		var fileRecord *domain.DocumentFile
 		if b != nil && b.Repo != nil {
-			_, _ = b.Repo.CreateDocumentFile(ctx, source.DocumentID, relPath, mimeType, int64(len(content)))
+			var err error
+			fileRecord, err = b.Repo.CreateDocumentFile(ctx, source.DocumentID, relPath, mimeType, int64(len(content)))
+			if err != nil {
+				log.Printf("extraction: failed to create DB record for %s: %v", relPath, err)
+			}
 		}
 
 		// Only append text files to the combined result for the LLM's initial view
 		if isLikelyText(content, mimeType) {
-			combinedText.WriteString(fmt.Sprintf("\n--- File: %s ---\n", relPath))
+			fileID := ""
+			if fileRecord != nil {
+				fileID = fileRecord.FileID
+			}
+			combinedText.WriteString(fmt.Sprintf("\n--- File: %s (ID: %s) ---\n", relPath, fileID))
 			combinedText.Write(content)
 			combinedText.WriteString("\n")
 		}
 	}
 
+	if extractedCount == 0 {
+		return ExtractionResult{}, fmt.Errorf("%w: zip file contained no valid files to extract", domain.ErrJobError)
+	}
+
 	return ExtractionResult{RawText: strings.TrimSpace(combinedText.String())}, nil
 }
+
 func isLikelyText(content []byte, mimeType string) bool {
 	if len(content) == 0 {
 		return true
 	}
 
 	// 1. Binary heuristic: scan first 512 bytes for NULL bytes.
-	// We do this first because even if mislabeled as text, a NULL byte strongly indicates binary.
 	checkLen := 512
 	if len(content) < checkLen {
 		checkLen = len(content)
@@ -201,4 +260,3 @@ func isLikelyText(content []byte, mimeType string) bool {
 	// 3. Last resort: must be valid UTF-8
 	return utf8.Valid(content)
 }
-
