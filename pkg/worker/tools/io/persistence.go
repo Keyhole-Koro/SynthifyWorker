@@ -77,7 +77,7 @@ func NewPersistenceTool(b *base.Context) (tool.Tool, error) {
 			}
 			itemIDs[item.LocalID] = createdItem.ItemID
 			for _, chunkID := range item.SourceChunkIDs {
-				if err := b.Repo.UpsertItemSource(ctx, createdItem.ItemID, args.DocumentID, chunkID, item.Description, 0.75); err != nil {
+				if err := b.Repo.UpsertItemSource(ctx, createdItem.ItemID, args.DocumentID, "", chunkID, item.Description, 0.75); err != nil {
 					return PersistenceResult{}, err
 				}
 			}
