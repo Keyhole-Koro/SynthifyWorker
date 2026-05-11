@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
+	shareddocument "github.com/synthify/backend/packages/shared/document"
 	"github.com/synthify/backend/packages/shared/domain"
-	"github.com/synthify/backend/packages/shared/pipeline"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -32,7 +32,7 @@ func NewChunkingTool(b *base.Context) (tool.Tool, error) {
 			return ChunkingResult{}, nil
 		}
 
-		sections := pipeline.SplitSections(text)
+		sections := shareddocument.SplitSections(text)
 		chunks := make([]domain.Chunk, 0, len(sections))
 		outline := make([]string, 0, len(sections))
 		for i, section := range sections {

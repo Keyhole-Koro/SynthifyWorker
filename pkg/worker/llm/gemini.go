@@ -15,7 +15,7 @@ import (
 	"github.com/synthify/backend/apps/worker/pkg/worker/sourcefiles"
 	"github.com/synthify/backend/packages/shared/config"
 	"github.com/synthify/backend/packages/shared/domain"
-	"github.com/synthify/backend/packages/shared/joblog"
+	"github.com/synthify/backend/packages/shared/job/log"
 	"github.com/synthify/backend/packages/shared/storage"
 	"google.golang.org/genai"
 )

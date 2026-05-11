@@ -12,7 +12,7 @@ import (
 	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/config"
 	treev1connect "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1/treev1connect"
-	"github.com/synthify/backend/packages/shared/joblog"
+	"github.com/synthify/backend/packages/shared/job/log"
 	"github.com/synthify/backend/packages/shared/middleware"
 	"github.com/synthify/backend/packages/shared/repository/postgres"
 	"github.com/synthify/backend/packages/shared/storage"
@@ -58,7 +58,7 @@ func main() {
 	evaluator := worker.NewJobEvaluator(store, embedder, appLogger)
 
 	mux := http.NewServeMux()
-	mux.Handle(treev1connect.NewWorkerServiceHandler(worker.NewConnectHandler(workerService, store, planner, evaluator)))
+	mux.Handle(treev1connect.NewWorkerServiceHandler(worker.NewConnectHandler(workerService, store, planner, evaluator, appLogger)))
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, `{"status":"ok"}`)
@@ -66,7 +66,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Synthify Worker listening on %s", addr)
-	h := middleware.Recover(middleware.Logger(withJobLogger(jobLogger, mux)))
+	h := middleware.Recover(appLogger, middleware.Logger(withJobLogger(jobLogger, mux)))
 	if err := http.ListenAndServe(addr, h); err != nil {
 		log.Fatal(err)
 	}

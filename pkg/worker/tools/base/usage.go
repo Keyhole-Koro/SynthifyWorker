@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
+	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
-	"github.com/synthify/backend/packages/shared/joblog"
+	"github.com/synthify/backend/packages/shared/job/log"
 )
 
 type sessionIDContext interface {
@@ -25,16 +25,21 @@ type usageCounters struct {
 
 // UsageLimiter tracks per-job worker resource usage and enforces JobCapability limits.
 type UsageLimiter struct {
-	repo Repository
+	repo   Repository
+	logger applog.Logger
 
 	mu   sync.Mutex
 	jobs map[string]*usageCounters
 }
 
-func NewUsageLimiter(repo Repository) *UsageLimiter {
+func NewUsageLimiter(repo Repository, logger applog.Logger) *UsageLimiter {
+	if logger == nil {
+		logger = applog.NoopLogger{}
+	}
 	return &UsageLimiter{
-		repo: repo,
-		jobs: make(map[string]*usageCounters),
+		repo:   repo,
+		logger: logger,
+		jobs:   make(map[string]*usageCounters),
 	}
 }
 
@@ -97,7 +102,7 @@ func (l *UsageLimiter) increment(ctx context.Context, llmCalls, toolRuns, itemCr
 		return nil
 	}
 	if capability.MaxLLMCalls > 0 && counters.llmCalls > capability.MaxLLMCalls {
-		log.Printf("usage limit exceeded: job=%s llm_calls=%d/%d", jobID, counters.llmCalls, capability.MaxLLMCalls)
+		l.logger.Error(ctx, "usage.limit_exceeded", fmt.Errorf("LLM call limit exceeded"), map[string]any{"job_id": jobID, "count": counters.llmCalls, "limit": capability.MaxLLMCalls})
 		joblog.FromContext(ctx).Log(ctx, joblog.Event{
 			JobID:   jobID,
 			Level:   joblog.ERROR,
@@ -108,7 +113,7 @@ func (l *UsageLimiter) increment(ctx context.Context, llmCalls, toolRuns, itemCr
 		return fmt.Errorf("job %s exceeded LLM call limit: %d > %d", jobID, counters.llmCalls, capability.MaxLLMCalls)
 	}
 	if capability.MaxToolRuns > 0 && counters.toolRuns > capability.MaxToolRuns {
-		log.Printf("usage limit exceeded: job=%s tool_runs=%d/%d", jobID, counters.toolRuns, capability.MaxToolRuns)
+		l.logger.Error(ctx, "usage.limit_exceeded", fmt.Errorf("tool run limit exceeded"), map[string]any{"job_id": jobID, "count": counters.toolRuns, "limit": capability.MaxToolRuns})
 		joblog.FromContext(ctx).Log(ctx, joblog.Event{
 			JobID:   jobID,
 			Level:   joblog.ERROR,
@@ -119,7 +124,7 @@ func (l *UsageLimiter) increment(ctx context.Context, llmCalls, toolRuns, itemCr
 		return fmt.Errorf("job %s exceeded tool run limit: %d > %d", jobID, counters.toolRuns, capability.MaxToolRuns)
 	}
 	if capability.MaxItemCreations > 0 && counters.itemCreations > capability.MaxItemCreations {
-		log.Printf("usage limit exceeded: job=%s item_creations=%d/%d", jobID, counters.itemCreations, capability.MaxItemCreations)
+		l.logger.Error(ctx, "usage.limit_exceeded", fmt.Errorf("item creation limit exceeded"), map[string]any{"job_id": jobID, "count": counters.itemCreations, "limit": capability.MaxItemCreations})
 		joblog.FromContext(ctx).Log(ctx, joblog.Event{
 			JobID:   jobID,
 			Level:   joblog.ERROR,

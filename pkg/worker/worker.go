@@ -15,9 +15,9 @@ import (
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 	treev1connect "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1/treev1connect"
-	"github.com/synthify/backend/packages/shared/joblifecycle"
-	"github.com/synthify/backend/packages/shared/joblog"
-	"github.com/synthify/backend/packages/shared/jobstatus"
+	"github.com/synthify/backend/packages/shared/job/lifecycle"
+	"github.com/synthify/backend/packages/shared/job/log"
+	"github.com/synthify/backend/packages/shared/job/status"
 	"github.com/synthify/backend/packages/shared/repository"
 	"github.com/synthify/backend/packages/shared/storage"
 	"github.com/synthify/backend/packages/shared/util"
@@ -60,7 +60,7 @@ func NewWorkerWithNotifier(repo Repository, treeRepo Repository, notifier jobsta
 	if logger == nil {
 		logger = applog.NoopLogger{}
 	}
-	usage := base.NewUsageLimiter(treeRepo)
+	usage := base.NewUsageLimiter(treeRepo, logger)
 	b := &base.Context{
 		Repo:     treeRepo,
 		Embedder: embedder,

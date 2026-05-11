@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -75,7 +74,7 @@ func NewExtractionTool(b *base.Context) (tool.Tool, error) {
 		if b.FS != nil {
 			destPath = filepath.Join(b.FS.DocPath(wsID, docID), source.Filename)
 			if err := os.WriteFile(destPath, source.Content, 0644); err != nil {
-				log.Printf("extraction: failed to save single file to FUSE: %v", err)
+				b.Logger.Error(ctx, "extraction.save_single_file_failed", err, map[string]any{"filename": source.Filename})
 			}
 		}
 
@@ -84,8 +83,9 @@ func NewExtractionTool(b *base.Context) (tool.Tool, error) {
 			var err error
 			fileRecord, err = b.Repo.CreateDocumentFile(ctx, source.DocumentID, source.Filename, source.MimeType, int64(len(source.Content)))
 			if err != nil {
-				log.Printf("extraction: failed to create DB record for single file: %v", err)
+				b.Logger.Error(ctx, "extraction.create_db_record_failed", err, map[string]any{"filename": source.Filename})
 			}
+
 		}
 
 		if isMediaFile(source.MimeType) {
@@ -179,26 +179,26 @@ func processZip(ctx context.Context, b *base.Context, source domain.SourceFile) 
 
 		// Create parent dirs
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			log.Printf("extraction: failed to create parent dir for %s: %v", relPath, err)
+			b.Logger.Error(ctx, "extraction.create_parent_dir_failed", err, map[string]any{"path": relPath})
 			continue
 		}
 
 		// Extract file
 		rc, err := f.Open()
 		if err != nil {
-			log.Printf("extraction: failed to open file in zip %s: %v", relPath, err)
+			b.Logger.Error(ctx, "extraction.open_zip_file_failed", err, map[string]any{"path": relPath})
 			continue
 		}
 
 		content, err := io.ReadAll(rc)
 		rc.Close()
 		if err != nil {
-			log.Printf("extraction: failed to read file content from zip %s: %v", relPath, err)
+			b.Logger.Error(ctx, "extraction.read_zip_file_failed", err, map[string]any{"path": relPath})
 			continue
 		}
 
 		if err := os.WriteFile(destPath, content, 0644); err != nil {
-			log.Printf("extraction: failed to write extracted file %s to FUSE: %v", relPath, err)
+			b.Logger.Error(ctx, "extraction.write_extracted_file_failed", err, map[string]any{"path": relPath})
 			continue
 		}
 
@@ -211,7 +211,7 @@ func processZip(ctx context.Context, b *base.Context, source domain.SourceFile) 
 			var err error
 			fileRecord, err = b.Repo.CreateDocumentFile(ctx, source.DocumentID, relPath, mimeType, int64(len(content)))
 			if err != nil {
-				log.Printf("extraction: failed to create DB record for %s: %v", relPath, err)
+				b.Logger.Error(ctx, "extraction.create_db_record_failed", err, map[string]any{"path": relPath})
 			}
 		}
 

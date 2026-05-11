@@ -3,9 +3,9 @@ package worker
 import (
 	"context"
 	"errors"
-	"log"
 
 	connect "connectrpc.com/connect"
+	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
 	treev1 "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1"
 )
@@ -17,16 +17,21 @@ type ConnectHandler struct {
 	jobRepo   Repository
 	planner   *Planner
 	evaluator *JobEvaluator
+	logger    applog.Logger
 }
 
 func NewConnectHandler(processor interface {
 	Process(ctx context.Context, req ExecutePlanRequest) error
-}, jobRepo Repository, planner *Planner, evaluator *JobEvaluator) *ConnectHandler {
+}, jobRepo Repository, planner *Planner, evaluator *JobEvaluator, logger applog.Logger) *ConnectHandler {
+	if logger == nil {
+		logger = applog.NoopLogger{}
+	}
 	return &ConnectHandler{
 		processor: processor,
 		jobRepo:   jobRepo,
 		planner:   planner,
 		evaluator: evaluator,
+		logger:    logger,
 	}
 }
 
@@ -34,7 +39,7 @@ func (h *ConnectHandler) GenerateExecutionPlan(ctx context.Context, req *connect
 	if req.Msg.GetJobId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("job_id is required"))
 	}
-	log.Printf("worker: GenerateExecutionPlan received: job=%s doc=%s", req.Msg.GetJobId(), req.Msg.GetDocumentId())
+	h.logger.Info(ctx, "worker.generate_plan_received", map[string]any{"job_id": req.Msg.GetJobId(), "doc_id": req.Msg.GetDocumentId()})
 	plan, err := h.planner.GenerateExecutionPlan(ctx, ExecutePlanRequest{
 		JobID:       req.Msg.GetJobId(),
 		JobType:     req.Msg.GetJobType(),
@@ -67,7 +72,7 @@ func (h *ConnectHandler) ExecuteApprovedPlan(ctx context.Context, req *connect.R
 		Filename:    req.Msg.GetFilename(),
 		MimeType:    req.Msg.GetMimeType(),
 	}
-	log.Printf("worker: ExecuteApprovedPlan received: job=%s doc=%s workspace=%s", req.Msg.GetJobId(), req.Msg.GetDocumentId(), req.Msg.GetWorkspaceId())
+	h.logger.Info(ctx, "worker.execute_plan_received", map[string]any{"job_id": req.Msg.GetJobId(), "doc_id": req.Msg.GetDocumentId(), "workspace_id": req.Msg.GetWorkspaceId()})
 	if err := dispatchReq.Validate(); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}

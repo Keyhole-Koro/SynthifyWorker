@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/synthify/backend/packages/shared/jobstatus"
+	"github.com/synthify/backend/packages/shared/job/status"
 )
 
 type JobRepository interface {

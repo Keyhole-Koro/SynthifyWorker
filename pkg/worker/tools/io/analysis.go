@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/synthify/backend/packages/shared/pipeline"
+	shareddocument "github.com/synthify/backend/packages/shared/document"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -78,7 +78,7 @@ func detectHeadingLevel(title string) int {
 			return level
 		}
 	}
-	if matches := pipeline.NumberedHeadingPattern.FindStringSubmatch(trimmed); len(matches) == 2 {
+	if matches := shareddocument.NumberedHeadingPattern.FindStringSubmatch(trimmed); len(matches) == 2 {
 		return strings.Count(matches[1], ".") + 1
 	}
 	return 1
