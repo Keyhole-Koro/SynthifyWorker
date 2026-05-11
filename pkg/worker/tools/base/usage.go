@@ -10,7 +10,8 @@ import (
 	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
 	"github.com/synthify/backend/packages/shared/job/log"
-)
+	)
+
 
 type sessionIDContext interface {
 	SessionID() string

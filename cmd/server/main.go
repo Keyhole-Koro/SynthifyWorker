@@ -25,13 +25,13 @@ func main() {
 	ctx := context.Background()
 	cfg := config.LoadWorker()
 	fs := storage.NewFileSystem(cfg.GCSFuseMountPath)
+	appLogger := applog.NewStdLogger()
 
-	appCtx := app.Bootstrap(ctx, cfg.GCSUploadURLBase, cfg.FirebaseProjectID)
+	appCtx := app.Bootstrap(ctx, cfg.GCSUploadURLBase, cfg.FirebaseProjectID, appLogger)
 	store := appCtx.Store
 	notifier := appCtx.Notifier
 
 	jobLogger := postgres.NewDBLogger(store)
-	appLogger := applog.NewStdLogger()
 
 	var adkModel model.LLM
 	var embedder *llm.GeminiClient
@@ -43,11 +43,11 @@ func main() {
 			Backend: genai.BackendGeminiAPI,
 		})
 		if err != nil {
-			log.Printf("Gemini model disabled: %v", err)
+			appLogger.Error(ctx, "worker.adk_model_init_failed", err, map[string]any{"model": llmCfg.GeminiModel})
 		}
 		embedder = llm.NewGeminiClient(llmCfg, fs)
 	} else {
-		log.Printf("Gemini API key not configured; worker will use deterministic fallback processing")
+		appLogger.Info(ctx, "worker.gemini_disabled", map[string]any{"reason": "no api key"})
 	}
 
 	workerService, err := worker.NewWorkerWithNotifier(store, store, notifier, adkModel, embedder, embedder, fs, appLogger)
@@ -65,8 +65,8 @@ func main() {
 	})
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
-	log.Printf("Synthify Worker listening on %s", addr)
-	h := middleware.Recover(appLogger, middleware.Logger(withJobLogger(jobLogger, mux)))
+	appLogger.Info(ctx, "worker.started", map[string]any{"addr": addr})
+	h := middleware.Recover(appLogger, middleware.Logger(appLogger, withJobLogger(jobLogger, mux)))
 	if err := http.ListenAndServe(addr, h); err != nil {
 		log.Fatal(err)
 	}
