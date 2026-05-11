@@ -8,6 +8,7 @@ import (
 	pgvector "github.com/pgvector/pgvector-go"
 
 	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
+	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/repository"
 	"github.com/synthify/backend/packages/shared/storage"
 	"google.golang.org/adk/tool"
@@ -50,6 +51,7 @@ type Context struct {
 	Embedder Embedder
 	LLM      LLMClient
 	FS       *storage.FileSystem
+	Logger   applog.Logger
 	Usage    *UsageLimiter
 	Memories []PromptMemory
 	Job      *JobContext

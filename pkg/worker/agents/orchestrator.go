@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync/atomic"
 	"time"
 
@@ -206,19 +205,19 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 
 				// Validate checkpoint
 				if envelope.SchemaVersion != currentCheckpointVersion {
-					log.Printf("orchestrator: checkpoint version mismatch for stage %s: %d != %d", stage, envelope.SchemaVersion, currentCheckpointVersion)
+					orch.base.Logger.Warn(ctx, "orchestrator.checkpoint_version_mismatch", nil, map[string]any{"stage": stage, "version": envelope.SchemaVersion, "expected": currentCheckpointVersion})
 					_ = orch.repo.UpsertStageRunning(ctx, jobID, stage)
 					return nil, nil
 				}
 
 				// Basic input validation - compare document_id
 				if b.Job != nil && envelope.DocumentID != b.Job.DocumentID {
-					log.Printf("orchestrator: checkpoint document_id mismatch for stage %s", stage)
+					orch.base.Logger.Warn(ctx, "orchestrator.checkpoint_document_id_mismatch", nil, map[string]any{"stage": stage, "doc_id": envelope.DocumentID, "expected": b.Job.DocumentID})
 					_ = orch.repo.UpsertStageRunning(ctx, jobID, stage)
 					return nil, nil
 				}
 
-				log.Printf("orchestrator: resuming stage %s from checkpoint", stage)
+				orch.base.Logger.Info(ctx, "orchestrator.resuming_from_checkpoint", map[string]any{"stage": stage})
 				return envelope.Outputs, nil
 			},
 		},
@@ -264,7 +263,7 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 					if writeErr := orch.fs.WriteCheckpoint(jobID, stage, envelope); writeErr == nil {
 						_ = orch.repo.MarkStageSucceeded(ctx, jobID, stage, orch.fs.CheckpointPath(jobID, stage))
 					} else {
-						log.Printf("orchestrator: failed to write checkpoint for stage %s: %v", stage, writeErr)
+						orch.base.Logger.Error(ctx, "orchestrator.write_checkpoint_failed", writeErr, map[string]any{"stage": stage})
 					}
 				} else if err != nil && stage != "" && jobID != "" && orch.repo != nil {
 					_ = orch.repo.MarkStageFailed(ctx, jobID, stage, err.Error())

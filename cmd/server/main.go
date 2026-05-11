@@ -9,6 +9,7 @@ import (
 	"github.com/synthify/backend/apps/worker/pkg/worker"
 	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
 	"github.com/synthify/backend/packages/shared/app"
+	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/config"
 	treev1connect "github.com/synthify/backend/packages/shared/gen/synthify/tree/v1/treev1connect"
 	"github.com/synthify/backend/packages/shared/joblog"
@@ -30,6 +31,7 @@ func main() {
 	notifier := appCtx.Notifier
 
 	jobLogger := postgres.NewDBLogger(store)
+	appLogger := applog.NewStdLogger()
 
 	var adkModel model.LLM
 	var embedder *llm.GeminiClient
@@ -48,12 +50,12 @@ func main() {
 		log.Printf("Gemini API key not configured; worker will use deterministic fallback processing")
 	}
 
-	workerService, err := worker.NewWorkerWithNotifier(store, store, notifier, adkModel, embedder, embedder, fs)
+	workerService, err := worker.NewWorkerWithNotifier(store, store, notifier, adkModel, embedder, embedder, fs, appLogger)
 	if err != nil {
 		log.Fatal(err)
 	}
-	planner := worker.NewPlanner(store, adkModel)
-	evaluator := worker.NewJobEvaluator(store, embedder)
+	planner := worker.NewPlanner(store, adkModel, appLogger)
+	evaluator := worker.NewJobEvaluator(store, embedder, appLogger)
 
 	mux := http.NewServeMux()
 	mux.Handle(treev1connect.NewWorkerServiceHandler(worker.NewConnectHandler(workerService, store, planner, evaluator)))
