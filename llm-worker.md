@@ -28,7 +28,7 @@ worker server の起動点は [main.go](/home/unix/Synthify/worker/cmd/server/ma
 - Gemini API key があれば ADK model を作る
 - `WorkerService` の Connect handler を公開する
 
-公開 RPC は [worker.proto](/home/unix/Synthify/proto/synthify/tree/v1/worker.proto) の 3 つ:
+公開 RPC は [worker.proto](/home/unix/Synthify/contracts/connectrpc/synthify/tree/v1/worker.proto) の 3 つ:
 
 - `GenerateExecutionPlan`
 - `ExecuteApprovedPlan`
