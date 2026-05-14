@@ -45,6 +45,7 @@ func (r *connectReporter) RecordUsage(ctx context.Context, ev domain.UsageEvent)
 		Model:        ev.Model,
 		InputTokens:  ev.InputTokens,
 		OutputTokens: ev.OutputTokens,
+		EventId:      ev.EventID,
 	})
 	req.Header().Set("X-Synthify-Service-Token", r.token)
 	_, err := r.client.RecordUsage(ctx, req)
