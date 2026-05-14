@@ -237,7 +237,7 @@ Mark tasks complete with 'journal_update_task' as you finish them.`,
 				}
 
 				if logger, ok := repo.(ToolLogger); ok && jobID != "" {
-					_ = logger.LogToolCall(context.Background(), jobID, t.Name(), string(argJSON), string(resJSON), time.Since(start).Milliseconds())
+					_ = logger.LogToolCall(ctx, jobID, t.Name(), string(argJSON), string(resJSON), time.Since(start).Milliseconds())
 				}
 
 				// Save checkpoint if successful and stage-able

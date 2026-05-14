@@ -46,7 +46,7 @@ func generateBrief(ctx context.Context, llmClient base.LLMClient, outline []stri
 		fmt.Fprintf(&sb, "%d. %s\n", i+1, heading)
 	}
 
-	raw, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
+	raw, _, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
 		SystemPrompt: `You are a document analyst. Given a list of section headings, infer:
 - topic: the main subject of the document (short phrase)
 - claim_summary: the core argument or purpose in one sentence

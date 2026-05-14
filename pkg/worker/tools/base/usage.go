@@ -10,8 +10,7 @@ import (
 	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
 	"github.com/synthify/backend/packages/shared/job/log"
-	)
-
+)
 
 type sessionIDContext interface {
 	SessionID() string
@@ -168,19 +167,19 @@ func NewCountingLLMClient(inner LLMClient, usage *UsageLimiter) LLMClient {
 	return &CountingLLMClient{inner: inner, usage: usage}
 }
 
-func (c *CountingLLMClient) GenerateStructured(ctx context.Context, req llm.StructuredRequest) (json.RawMessage, error) {
+func (c *CountingLLMClient) GenerateStructured(ctx context.Context, req llm.StructuredRequest) (json.RawMessage, llm.Usage, error) {
 	if c != nil && c.usage != nil {
 		if err := c.usage.IncrementLLMCalls(ctx); err != nil {
-			return nil, err
+			return nil, llm.Usage{}, err
 		}
 	}
 	return c.inner.GenerateStructured(ctx, req)
 }
 
-func (c *CountingLLMClient) GenerateText(ctx context.Context, req llm.TextRequest) (string, error) {
+func (c *CountingLLMClient) GenerateText(ctx context.Context, req llm.TextRequest) (string, llm.Usage, error) {
 	if c != nil && c.usage != nil {
 		if err := c.usage.IncrementLLMCalls(ctx); err != nil {
-			return "", err
+			return "", llm.Usage{}, err
 		}
 	}
 	return c.inner.GenerateText(ctx, req)

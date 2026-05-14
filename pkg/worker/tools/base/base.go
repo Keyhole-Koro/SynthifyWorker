@@ -16,8 +16,8 @@ import (
 
 // LLMClient is the interface for structured and text generation used by process tools.
 type LLMClient interface {
-	GenerateStructured(ctx context.Context, req llm.StructuredRequest) (json.RawMessage, error)
-	GenerateText(ctx context.Context, req llm.TextRequest) (string, error)
+	GenerateStructured(ctx context.Context, req llm.StructuredRequest) (json.RawMessage, llm.Usage, error)
+	GenerateText(ctx context.Context, req llm.TextRequest) (string, llm.Usage, error)
 }
 
 // Repository is the interface for data access required by tools.

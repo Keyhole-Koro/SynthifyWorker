@@ -57,7 +57,7 @@ func merge(ctx context.Context, llmClient base.LLMClient, items []MergeCandidate
 		Reason   string `json:"reason"`
 	}
 
-	raw, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
+	raw, _, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
 		SystemPrompt: `You are a knowledge deduplication expert.
 Given a list of knowledge tree items that may represent the same concept,
 select the single most comprehensive and accurate one as the canonical item.

@@ -28,7 +28,7 @@ func (e *Evaluator) EvaluateTree(ctx context.Context, treeData string) (*evaluat
 		return &evaluationOutput{Score: 0, Passed: false, Summary: "LLM not configured"}, nil
 	}
 
-	raw, err := e.llm.GenerateStructured(ctx, llm.StructuredRequest{
+	raw, _, err := e.llm.GenerateStructured(ctx, llm.StructuredRequest{
 		SystemPrompt: `You are a quality assurance engineer for a knowledge management system.
 Evaluate the provided knowledge tree JSON and return a structured assessment.
 Score from 0-100 based on:

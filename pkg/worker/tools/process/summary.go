@@ -28,7 +28,7 @@ func NewSummaryTool(b *base.Context) (tool.Tool, error) {
 			return SummaryResult{HTML: args.Item.Content}, nil
 		}
 
-		html, err := b.LLM.GenerateText(ctx, llm.TextRequest{
+		html, _, err := b.LLM.GenerateText(ctx, llm.TextRequest{
 			SystemPrompt: `You are a Technical Writer. Convert the provided item details into a professional, rich HTML summary.
 
 Rules:

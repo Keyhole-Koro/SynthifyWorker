@@ -10,6 +10,7 @@ import (
 	connect "connectrpc.com/connect"
 	"github.com/synthify/backend/apps/worker/pkg/worker/agents"
 	"github.com/synthify/backend/apps/worker/pkg/worker/llm"
+	"github.com/synthify/backend/apps/worker/pkg/worker/metering"
 	"github.com/synthify/backend/apps/worker/pkg/worker/tools/base"
 	"github.com/synthify/backend/packages/shared/applog"
 	"github.com/synthify/backend/packages/shared/domain"
@@ -115,6 +116,17 @@ func (w *Worker) Process(ctx context.Context, req ExecutePlanRequest) error {
 
 	if _, err := w.repo.GetDocument(ctx, req.DocumentID); err != nil {
 		return fmt.Errorf("get document %s: %w", req.DocumentID, err)
+	}
+
+	// Tag the context with the account so the metering LLM wrapper can attribute
+	// token usage to the right billing account. A missing workspace is treated
+	// as non-fatal — the wrapper logs and drops usage rather than failing the job.
+	if ws, wsErr := w.repo.GetWorkspace(ctx, req.WorkspaceID); wsErr == nil && ws != nil {
+		ctx = metering.WithTag(ctx, metering.Tag{
+			AccountID:   ws.AccountID,
+			WorkspaceID: req.WorkspaceID,
+			JobID:       req.JobID,
+		})
 	}
 
 	payload := jobstatus.Payload{

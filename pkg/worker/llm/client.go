@@ -8,19 +8,8 @@ import (
 )
 
 type Client interface {
-	GenerateStructured(ctx context.Context, req StructuredRequest) (json.RawMessage, error)
-	GenerateText(ctx context.Context, req TextRequest) (string, error)
-}
-
-// ClientWithUsage extends Client with variants that surface LLM token usage.
-// Implementations that have access to per-call usage (e.g. Gemini) should implement
-// this in addition to Client; lightweight wrappers may skip it. Callers can type-assert:
-//
-//	if cwu, ok := llm.(ClientWithUsage); ok { /* report usage */ }
-type ClientWithUsage interface {
-	Client
-	GenerateStructuredWithUsage(ctx context.Context, req StructuredRequest) (json.RawMessage, Usage, error)
-	GenerateTextWithUsage(ctx context.Context, req TextRequest) (string, Usage, error)
+	GenerateStructured(ctx context.Context, req StructuredRequest) (json.RawMessage, Usage, error)
+	GenerateText(ctx context.Context, req TextRequest) (string, Usage, error)
 }
 
 // Usage is the per-call token accounting returned by the LLM provider.

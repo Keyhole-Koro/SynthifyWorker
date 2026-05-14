@@ -57,7 +57,7 @@ func synthesize(ctx context.Context, llmClient base.LLMClient, args SynthesisArg
 		Items []domain.SynthesizedItem `json:"items"`
 	}
 
-	raw, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
+	raw, _, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
 		SystemPrompt: `You are a Lead Knowledge Architect. Convert document chunks into a high-fidelity, hierarchical knowledge tree.
 
 Rules for "content" (STRICT):

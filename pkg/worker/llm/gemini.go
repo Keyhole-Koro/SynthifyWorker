@@ -26,28 +26,25 @@ type GeminiClient struct {
 	fs     *storage.FileSystem
 }
 
-func NewGeminiClient(cfg config.LLM, fs *storage.FileSystem) *GeminiClient {
-	ctx := context.Background()
+func NewGeminiClient(ctx context.Context, cfg config.LLM, fs *storage.FileSystem) (*GeminiClient, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  cfg.GeminiAPIKey,
 		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {
-		// NewClient during construction might be risky if API key is missing,
-		// but let's follow the pattern.
-		return &GeminiClient{model: cfg.GeminiModel, fs: fs}
+		return nil, fmt.Errorf("init gemini client: %w", err)
 	}
 
 	return &GeminiClient{
 		client: client,
 		model:  cfg.GeminiModel,
 		fs:     fs,
-	}
+	}, nil
 }
 
-func (c *GeminiClient) GenerateStructured(ctx context.Context, req StructuredRequest) (json.RawMessage, error) {
+func (c *GeminiClient) GenerateStructured(ctx context.Context, req StructuredRequest) (json.RawMessage, Usage, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("gemini client not initialized")
+		return nil, Usage{}, fmt.Errorf("gemini client not initialized")
 	}
 
 	config := &genai.GenerateContentConfig{
@@ -60,20 +57,20 @@ func (c *GeminiClient) GenerateStructured(ctx context.Context, req StructuredReq
 
 	res, err := c.generate(ctx, req.SystemPrompt, req.UserPrompt, req.SourceFiles, config)
 	if err != nil {
-		return nil, fmt.Errorf("gemini api: %w", err)
+		return nil, Usage{}, fmt.Errorf("gemini api: %w", err)
 	}
 
 	if len(res.Candidates) == 0 || len(res.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("gemini api: empty response")
+		return nil, geminiUsage(c.model, res), fmt.Errorf("gemini api: empty response")
 	}
 
 	text := res.Candidates[0].Content.Parts[0].Text
-	return json.RawMessage(RepairJSON(text)), nil
+	return json.RawMessage(RepairJSON(text)), geminiUsage(c.model, res), nil
 }
 
-func (c *GeminiClient) GenerateText(ctx context.Context, req TextRequest) (string, error) {
+func (c *GeminiClient) GenerateText(ctx context.Context, req TextRequest) (string, Usage, error) {
 	if c.client == nil {
-		return "", fmt.Errorf("gemini client not initialized")
+		return "", Usage{}, fmt.Errorf("gemini client not initialized")
 	}
 
 	config := &genai.GenerateContentConfig{
@@ -85,14 +82,14 @@ func (c *GeminiClient) GenerateText(ctx context.Context, req TextRequest) (strin
 
 	res, err := c.generate(ctx, req.SystemPrompt, req.UserPrompt, req.SourceFiles, config)
 	if err != nil {
-		return "", fmt.Errorf("gemini api: %w", err)
+		return "", Usage{}, fmt.Errorf("gemini api: %w", err)
 	}
 
 	if len(res.Candidates) == 0 || len(res.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("gemini api: empty response")
+		return "", geminiUsage(c.model, res), fmt.Errorf("gemini api: empty response")
 	}
 
-	return res.Candidates[0].Content.Parts[0].Text, nil
+	return res.Candidates[0].Content.Parts[0].Text, geminiUsage(c.model, res), nil
 }
 
 func (c *GeminiClient) generate(ctx context.Context, systemPrompt, userPrompt string, sourceFiles []domain.SourceFile, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
@@ -121,7 +118,7 @@ func (c *GeminiClient) buildContents(ctx context.Context, userPrompt string, sou
 	var uploadedNames []string
 	cleanup := func() {
 		for _, name := range uploadedNames {
-			c.deleteUploadedFile(name)
+			c.deleteUploadedFile(ctx, name)
 		}
 	}
 
@@ -185,11 +182,11 @@ func (c *GeminiClient) waitForFileActive(ctx context.Context, name string) error
 	}
 }
 
-func (c *GeminiClient) deleteUploadedFile(name string) {
+func (c *GeminiClient) deleteUploadedFile(ctx context.Context, name string) {
 	if c.client == nil || strings.TrimSpace(name) == "" {
 		return
 	}
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	cleanupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	_, _ = c.client.Files.Delete(cleanupCtx, name, nil)
 }
@@ -215,6 +212,18 @@ func detectDisplayName(source domain.SourceFile) string {
 		return base
 	}
 	return "source-file"
+}
+
+func geminiUsage(model string, res *genai.GenerateContentResponse) Usage {
+	if res == nil || res.UsageMetadata == nil {
+		return Usage{Model: model}
+	}
+	meta := res.UsageMetadata
+	return Usage{
+		Model:        model,
+		InputTokens:  int64(meta.PromptTokenCount),
+		OutputTokens: int64(meta.CandidatesTokenCount),
+	}
 }
 
 func ptr[T any](v T) *T {

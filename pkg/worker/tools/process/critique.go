@@ -45,7 +45,7 @@ func critique(ctx context.Context, llmClient base.LLMClient, targetData, criteri
 
 	userPrompt := fmt.Sprintf("Criteria: %s\n\nContent to evaluate:\n%s", criteria, targetData)
 
-	raw, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
+	raw, _, err := llmClient.GenerateStructured(ctx, llm.StructuredRequest{
 		SystemPrompt: `You are a quality assurance reviewer for a knowledge management system.
 Evaluate the provided content for:
 - Hallucinations (claims not grounded in the source)

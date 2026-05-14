@@ -128,7 +128,7 @@ func processMedia(ctx context.Context, b *base.Context, source domain.SourceFile
 		return ExtractionResult{}, fmt.Errorf("%w: LLM client not configured for transcription", domain.ErrCritical)
 	}
 
-	text, err := b.LLM.GenerateText(ctx, llm.TextRequest{
+	text, _, err := b.LLM.GenerateText(ctx, llm.TextRequest{
 		SystemPrompt: "You are an expert transcription and video analysis assistant. Your task is to provide a high-quality, verbatim transcription of the provided media file. If it is a video, describe key visual transitions with timestamps as well.",
 		UserPrompt:   "Please transcribe this media file. Use MM:SS format for timestamps.",
 		SourceFiles:  []domain.SourceFile{source},
