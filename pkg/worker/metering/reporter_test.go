@@ -75,3 +75,11 @@ func (c *billingClientStub) ListInvoices(context.Context, *connect.Request[treev
 func (c *billingClientStub) ListPaymentMethods(context.Context, *connect.Request[treev1.ListPaymentMethodsRequest]) (*connect.Response[treev1.ListPaymentMethodsResponse], error) {
 	return connect.NewResponse(&treev1.ListPaymentMethodsResponse{}), nil
 }
+
+func (c *billingClientStub) GrantCredit(context.Context, *connect.Request[treev1.GrantCreditRequest]) (*connect.Response[treev1.GrantCreditResponse], error) {
+	return connect.NewResponse(&treev1.GrantCreditResponse{}), nil
+}
+
+func (c *billingClientStub) GetCreditBalance(context.Context, *connect.Request[treev1.GetCreditBalanceRequest]) (*connect.Response[treev1.GetCreditBalanceResponse], error) {
+	return connect.NewResponse(&treev1.GetCreditBalanceResponse{}), nil
+}
